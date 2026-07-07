@@ -1,6 +1,8 @@
 using System.Collections.Generic;
 using UnityEngine;
 using TowardTheStars.Data;
+using TowardTheStars.Objects;
+using TowardTheStars.Light;
 
 namespace TowardTheStars.Level
 {
@@ -64,6 +66,7 @@ namespace TowardTheStars.Level
             BuildMirrors(stage);
             BuildDecoys(stage);
             BuildSpawn(stage);
+            BuildBeam(stage);   // Phase 2: 거울·게이트 배치 후 빛 추적
 
             if (frameCamera) FrameCamera(stage);
 
@@ -98,7 +101,10 @@ namespace TowardTheStars.Level
         void BuildWalls(StageData s)
         {
             foreach (var c in s.AllWalls())
-                Piece($"wall_{c[0]}_{c[1]}", new Vector2(c[0], c[1]), C_Wall, Z_TERRAIN, Vector2.one);
+            {
+                var root = SolidRoot($"wall_{c[0]}_{c[1]}", new Vector2(c[0], c[1]), 1.0f);
+                VisualChild(root.transform, C_Wall, Z_TERRAIN, Vector2.one);
+            }
         }
 
         void BuildPlatforms(StageData s)
@@ -142,8 +148,10 @@ namespace TowardTheStars.Level
         void BuildGate(StageData s)
         {
             if (s.Gate?.Pos == null) return;
-            Piece("gate", new Vector2(s.Gate.Pos[0], s.Gate.Pos[1]),
-                  C_Gate, Z_OBJECT, new Vector2(0.9f, 0.9f));
+            var root = SolidRoot("gate", new Vector2(s.Gate.Pos[0], s.Gate.Pos[1]), 0.9f);
+            var det = root.AddComponent<LightDetector>();
+            var sr = VisualChild(root.transform, C_Gate, Z_OBJECT, new Vector2(0.9f, 0.9f));
+            det.visual = sr;   // 개방 시 색 변경용
         }
 
         void BuildMirrors(StageData s)
@@ -152,11 +160,30 @@ namespace TowardTheStars.Level
             foreach (var m in s.Mirrors)
             {
                 if (m.Pos == null) continue;
-                var col = m.Fixed ? C_MirrorFix : C_Mirror;
+                var root = SolidRoot($"mirror_{m.Id}", new Vector2(m.Pos[0], m.Pos[1]), 0.9f);
+                root.AddComponent<Mirror>().Init(m.AngleDeg, m.Fixed);
                 // 얇은 막대를 rotation_z(= -angle)로 회전 → 거울 면을 시각화 [GDD §30]
-                Piece($"mirror_{m.Id}", new Vector2(m.Pos[0], m.Pos[1]),
-                      col, Z_OBJECT, new Vector2(1.1f, 0.18f), m.RotationZ);
+                var col = m.Fixed ? C_MirrorFix : C_Mirror;
+                VisualChild(root.transform, col, Z_OBJECT, new Vector2(1.1f, 0.18f), m.RotationZ);
             }
+        }
+
+        void BuildBeam(StageData s)
+        {
+            if (s.Source?.Pos == null) return;
+            var dir = GridMap.DirToVector(s.Source.Dir);
+            if (dir == Vector2.zero)
+            {
+                Debug.LogWarning($"[LevelBuilder] 소스 방향 해석 실패: '{s.Source.Dir}'");
+                return;
+            }
+            var go = new GameObject("Beam");
+            go.transform.SetParent(_root, false);
+            var beam = go.AddComponent<BeamController>();
+            beam.origin = new Vector2(s.Source.Pos[0], s.Source.Pos[1]);
+            beam.direction = dir;
+            beam.intensity = 1f;
+            beam.Retrace();
         }
 
         void BuildDecoys(StageData s)
@@ -191,6 +218,32 @@ namespace TowardTheStars.Level
             sr.color = col;
             sr.sortingOrder = order;
             return go;
+        }
+
+        // 콜라이더가 있는 광학 오브젝트의 루트(스케일 1, 정사각 콜라이더). 시각은 자식으로 분리.
+        GameObject SolidRoot(string name, Vector2 pos, float colliderSize)
+        {
+            var go = new GameObject(name);
+            go.transform.SetParent(_root, false);
+            go.transform.position = new Vector3(pos.x, pos.y, 0f);
+            var col = go.AddComponent<BoxCollider2D>();
+            col.size = new Vector2(colliderSize, colliderSize);
+            return go;
+        }
+
+        // 루트에 붙는 시각 사각형(콜라이더 없음). 회전/스케일은 시각에만 적용돼 반사 판정과 분리.
+        SpriteRenderer VisualChild(Transform parent, Color col, int order, Vector2 scale, float rotZ = 0f)
+        {
+            var go = new GameObject("visual");
+            go.transform.SetParent(parent, false);
+            go.transform.localPosition = Vector3.zero;
+            go.transform.localRotation = Quaternion.Euler(0f, 0f, rotZ);
+            go.transform.localScale = new Vector3(scale.x, scale.y, 1f);
+            var sr = go.AddComponent<SpriteRenderer>();
+            sr.sprite = Square;
+            sr.color = col;
+            sr.sortingOrder = order;
+            return sr;
         }
 
         void FrameCamera(StageData s)
