@@ -78,10 +78,15 @@ namespace TowardTheStars.Level
         [ContextMenu("Clear")]
         public void Clear()
         {
-            if (_root != null) { DestroySafe(_root.gameObject); _root = null; }
-            // 에디터에서 이전 잔여물 정리
-            var existing = transform.Find($"Level_{stageKey}");
-            if (existing != null) DestroySafe(existing.gameObject);
+            _root = null;
+            // 이 오브젝트 아래 생성된 레벨 루트(Level_*)를 stageKey와 무관하게 전부 제거.
+            // (재컴파일로 _root 참조가 날아가도 다른 스테이지 잔존물이 남지 않도록)
+            for (int i = transform.childCount - 1; i >= 0; i--)
+            {
+                var child = transform.GetChild(i);
+                if (child.name.StartsWith("Level_"))
+                    DestroySafe(child.gameObject);
+            }
         }
 
         // ---------- 요소별 배치 ----------
