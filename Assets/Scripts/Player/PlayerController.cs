@@ -14,8 +14,11 @@ namespace TowardTheStars.Player
     {
         [Header("이동 (유닛/초)")]
         public float moveSpeed = 6f;
-        public float jumpSpeed = 11f;
         public float climbSpeed = 5f;
+
+        [Header("점프")]
+        public float jumpHeightCells = 3.5f;   // 수직 점프 정점 높이(칸). 맵파일 jump_units=3.5 기준.
+        // 실제 점프 속도는 중력에서 역산 → gravityScale/중력이 바뀌어도 정점 높이 유지.
 
         [Header("접지 판정")]
         public float groundCheckDist = 0.08f;   // 발밑으로 이만큼 캐스트해 바닥 감지
@@ -88,9 +91,16 @@ namespace TowardTheStars.Player
             _rb.gravityScale = _baseGravity;
             var v = _rb.linearVelocity;
             v.x = ix * moveSpeed;
-            if (_jumpQueued && IsGrounded()) v.y = jumpSpeed;
+            if (_jumpQueued && IsGrounded()) v.y = JumpVelocity();
             _rb.linearVelocity = v;
             _jumpQueued = false;
+        }
+
+        // 정점 높이 h를 내려면 v0 = sqrt(2·g·h). g = |중력.y|·gravityScale.
+        float JumpVelocity()
+        {
+            float g = Mathf.Abs(Physics2D.gravity.y) * _baseGravity;
+            return Mathf.Sqrt(2f * g * jumpHeightCells);
         }
 
         bool IsGrounded()

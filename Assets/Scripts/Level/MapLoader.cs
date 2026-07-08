@@ -245,6 +245,9 @@ namespace TowardTheStars.Level
 
             var body = go.AddComponent<BoxCollider2D>();
             body.size = new Vector2(0.6f, 0.9f);          // 몸통(트리거 아님) — 지형/발판과 충돌
+            body.edgeRadius = 0.03f;                       // 모서리 라운딩 → 타일 콜라이더 이음새에 안 걸림
+            // 벽 끼임 방지: 마찰 0. 정지 시 x속도는 PlayerController가 0으로 세팅하므로 미끄러짐 없음.
+            body.sharedMaterial = new PhysicsMaterial2D("PlayerSlip") { friction = 0f, bounciness = 0f };
             var rb = go.AddComponent<Rigidbody2D>();
             rb.gravityScale = 3f;
             rb.freezeRotation = true;
