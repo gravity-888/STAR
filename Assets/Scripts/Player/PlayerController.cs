@@ -20,7 +20,8 @@ namespace TowardTheStars.Player
         public float jumpHeightCells = 3.5f;   // 끝까지 누른 최대 정점 높이(칸). 맵파일 jump_units=3.5 기준.
         [Range(0.05f, 1f)]
         public float jumpCutMultiplier = 0.45f;  // 상승 중 버튼 떼면 상승속도 ×이 값 → 낮은 점프.
-        // 최대 속도는 중력에서 역산(정점=3.5칸). 짧게 누르면 상승 감쇠로 정점≈0.45²·3.5≈0.7칸.
+        public float fallGravityMultiplier = 2.2f;  // 상승 중 뗀 순간부터 착지까지 중력 ×이 값 → 빠른 낙하.
+        // 최대 속도는 중력에서 역산(정점=3.5칸). 짧게 누르면 상승 감쇠 + 중력 증가로 빠르게 낮게 떨어짐.
 
         [Header("접지 판정")]
         public float groundCheckDist = 0.08f;   // 발밑으로 이만큼 캐스트해 바닥 감지
@@ -33,6 +34,7 @@ namespace TowardTheStars.Player
         float _baseGravity;
         bool _jumpQueued;      // 이번에 점프 눌림(에지)
         bool _jumpReleased;    // 점프 버튼 뗌(에지) → 상승 감쇠 신호
+        bool _fastFall;        // 상승 중 뗌 → 착지까지 중력 증가(빠른 낙하)
 
         int _ladderCount;        // 현재 겹친 사다리 수 (>0 이면 사다리 위)
         bool _climbing;
@@ -88,22 +90,33 @@ namespace TowardTheStars.Player
                     _rb.gravityScale = 0f;
                     _rb.linearVelocity = new Vector2(ix * moveSpeed * 0.6f, iy * climbSpeed);
                     _jumpQueued = false;
+                    _fastFall = false;   // 사다리에선 빠른 낙하 해제
                     return;
                 }
             }
 
             // 일반 지상/공중 이동
-            _rb.gravityScale = _baseGravity;
             var v = _rb.linearVelocity;
             v.x = ix * moveSpeed;
 
-            if (_jumpQueued && IsGrounded())
+            bool grounded = IsGrounded();
+            if (grounded && v.y <= 0.01f) _fastFall = false;   // 착지 → 빠른 낙하 해제
+
+            if (_jumpQueued && grounded)
             {
                 v.y = JumpVelocity();     // 최대 속도로 발사(끝까지 누르면 3.5칸)
                 _jumpReleased = false;    // 새 점프 → 이전 릴리즈 신호 무시
+                _fastFall = false;
             }
-            // 가변 점프: 상승 중 버튼을 떼면 상승속도 감쇠 → 낮은 점프(누른 시간에 비례).
-            if (_jumpReleased && v.y > 0f) v.y *= jumpCutMultiplier;
+            // 가변 점프: 상승 중 버튼을 떼면 상승속도 감쇠 + 빠른 낙하 개시(누른 시간에 비례).
+            if (_jumpReleased && v.y > 0f)
+            {
+                v.y *= jumpCutMultiplier;
+                _fastFall = true;
+            }
+
+            // 빠른 낙하 구간은 중력 가중.
+            _rb.gravityScale = _fastFall ? _baseGravity * fallGravityMultiplier : _baseGravity;
 
             _rb.linearVelocity = v;
             _jumpQueued = false;
