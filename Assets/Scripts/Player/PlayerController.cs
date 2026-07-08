@@ -24,7 +24,7 @@ namespace TowardTheStars.Player
 
         [Header("접지 판정")]
         public float groundCheckDist = 0.08f;   // 발밑으로 이만큼 캐스트해 바닥 감지
-        public float coyoteTime = 0.1f;          // 발판에서 떨어진 직후 이 시간 동안은 점프 허용(코요테 타임)
+        public float coyoteTime = 0.07f;         // 발판에서 떨어진 직후 이 시간 동안은 점프 허용(코요테 타임)
 
         Rigidbody2D _rb;
         BoxCollider2D _col;
@@ -35,6 +35,7 @@ namespace TowardTheStars.Player
         bool _jumpQueued;      // 이번에 점프 눌림(에지)
         bool _jumpReleased;    // 점프 버튼 뗌(에지) → 상승 감쇠 신호
         float _coyoteTimer;    // 접지 후 남은 코요테 유예(>0이면 공중이어도 점프 가능)
+        int _lastHorizDir;     // 마지막으로 누른 수평 방향(-1/+1). 좌우 동시입력 시 이쪽 우선
 
         int _ladderCount;        // 현재 겹친 사다리 수 (>0 이면 사다리 위)
         bool _climbing;
@@ -63,6 +64,10 @@ namespace TowardTheStars.Player
             if (kb == null) return;
             if (kb.spaceKey.wasPressedThisFrame)  _jumpQueued = true;
             if (kb.spaceKey.wasReleasedThisFrame) _jumpReleased = true;
+
+            // 좌우 동시입력 시 "나중에 누른 방향" 우선 → 눌린 순간을 기록.
+            if (kb.aKey.wasPressedThisFrame || kb.leftArrowKey.wasPressedThisFrame)  _lastHorizDir = -1;
+            if (kb.dKey.wasPressedThisFrame || kb.rightArrowKey.wasPressedThisFrame) _lastHorizDir = +1;
         }
 
         void FixedUpdate()
@@ -71,8 +76,12 @@ namespace TowardTheStars.Player
             var kb = Keyboard.current;
             if (kb != null)
             {
-                if (kb.aKey.isPressed || kb.leftArrowKey.isPressed)  ix -= 1f;
-                if (kb.dKey.isPressed || kb.rightArrowKey.isPressed) ix += 1f;
+                bool left  = kb.aKey.isPressed || kb.leftArrowKey.isPressed;
+                bool right = kb.dKey.isPressed || kb.rightArrowKey.isPressed;
+                if (left && right)  ix = _lastHorizDir;              // 반대 방향 동시 → 나중에 누른 쪽
+                else if (left)      { ix = -1f; _lastHorizDir = -1; }
+                else if (right)     { ix =  1f; _lastHorizDir =  1; }
+
                 if (kb.wKey.isPressed || kb.upArrowKey.isPressed)    iy += 1f;
                 if (kb.sKey.isPressed || kb.downArrowKey.isPressed)  iy -= 1f;
             }
