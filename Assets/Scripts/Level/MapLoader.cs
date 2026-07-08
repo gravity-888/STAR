@@ -24,7 +24,11 @@ namespace TowardTheStars.Level
 
         [Header("옵션")]
         public bool buildOnStart = true;
-        public bool frameCamera = true;
+        public bool frameCamera = true;      // 팔로우 미사용 시 스테이지 전체를 프레이밍(폴백)
+
+        [Header("카메라")]
+        public bool followPlayer = true;     // 플레이어 추적 카메라 사용
+        public float cameraViewCells = 16f;  // 화면 세로에 담을 셀 수(줌 정도)
 
         // 색 팔레트(플레이스홀더)
         static readonly Color C_Terrain  = new(0.35f, 0.26f, 0.18f);
@@ -88,14 +92,14 @@ namespace TowardTheStars.Level
 
             BuildDecoys(stage);
             BuildSpawn(stage);
-            BuildPlayer(stage);
+            var player = BuildPlayer(stage);
 
             // 빛 추적기 생성 후 추적
             var tracer = new GameObject("BeamTracer").AddComponent<BeamTracer>();
             tracer.transform.SetParent(_root, false);
             tracer.Trace();
 
-            if (frameCamera) FrameCamera(stage);
+            SetupCamera(stage, player);
 
             Debug.Log($"[MapLoader] '{stageKey}' 완료 — 거울 {stage.Mirrors?.Count ?? 0} · " +
                       $"프리즘 {(stage.Prism != null ? 1 : 0)} · 사다리 {stage.Ladders?.Count ?? 0}");
@@ -237,10 +241,10 @@ namespace TowardTheStars.Level
             Decor("spawn", new Vector2(s.Spawn[0], s.Spawn[1]), C_Spawn, Z_SPAWN, Vector2.one * 0.6f);
         }
 
-        // 스폰 지점에 플레이어 액터 배치(Rigidbody2D + 콜라이더 + PlayerController).
-        void BuildPlayer(StageData s)
+        // 스폰 지점에 플레이어 액터 배치(Rigidbody2D + 콜라이더 + PlayerController). 카메라 추적용 Transform 반환.
+        Transform BuildPlayer(StageData s)
         {
-            if (s.Spawn == null || s.Spawn.Length < 2) return;
+            if (s.Spawn == null || s.Spawn.Length < 2) return null;
             var pos = new Vector2(s.Spawn[0], s.Spawn[1]);
             var go = new GameObject("Player");
             go.transform.SetParent(_root, false);
@@ -258,6 +262,7 @@ namespace TowardTheStars.Level
             go.AddComponent<MirrorInteractor>();   // Phase 4: Q/E로 가까운 거울 회전 + 빛 재추적
 
             Visual(go.transform, C_Player, Z_SPAWN + 1, new Vector2(0.6f, 0.9f));
+            return go.transform;
         }
 
         // ---------- 유틸 ----------
@@ -303,6 +308,33 @@ namespace TowardTheStars.Level
             sr.color = col;
             sr.sortingOrder = order;
             return sr;
+        }
+
+        // 플레이어가 있으면 추적 카메라, 아니면(또는 followPlayer=false) 전체 프레이밍.
+        void SetupCamera(StageData s, Transform player)
+        {
+            var cam = Camera.main;
+            if (cam == null || s.Grid == null) return;
+
+            if (followPlayer && player != null)
+            {
+                cam.orthographic = true;
+                // 세로 cameraViewCells 칸이 담기게 줌(스테이지가 더 작으면 전체 높이에 맞춤).
+                cam.orthographicSize = Mathf.Min(cameraViewCells * 0.5f, s.Grid.H * 0.5f);
+                var cp = cam.transform.position;
+                cam.transform.position = new Vector3(cp.x, cp.y, -10f);   // 2D 직교 표준 z 보장
+                var follow = cam.GetComponent<CameraFollow>();
+                if (follow == null) follow = cam.gameObject.AddComponent<CameraFollow>();
+                follow.enabled = true;
+                follow.Configure(player, new Vector2(-0.5f, -0.5f),
+                                         new Vector2(s.Grid.W - 0.5f, s.Grid.H - 0.5f));
+            }
+            else
+            {
+                var follow = cam.GetComponent<CameraFollow>();
+                if (follow != null) follow.enabled = false;
+                if (frameCamera) FrameCamera(s);
+            }
         }
 
         void FrameCamera(StageData s)
