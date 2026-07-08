@@ -319,15 +319,26 @@ namespace TowardTheStars.Level
             if (followPlayer && player != null)
             {
                 cam.orthographic = true;
-                // 세로 cameraViewCells 칸이 담기게 줌(스테이지가 더 작으면 전체 높이에 맞춤).
-                cam.orthographicSize = Mathf.Min(cameraViewCells * 0.5f, s.Grid.H * 0.5f);
+
+                // 스테이지별 오버라이드(맵 JSON의 camera) 적용: 확대율(view_cells)·경계 여유(pad).
+                float viewCells = cameraViewCells;
+                var min = new Vector2(-0.5f, -0.5f);
+                var max = new Vector2(s.Grid.W - 0.5f, s.Grid.H - 0.5f);
+                if (s.Camera != null)
+                {
+                    if (s.Camera.ViewCells > 0f) viewCells = s.Camera.ViewCells;
+                    min.x -= s.Camera.SidePad;   max.x += s.Camera.SidePad;
+                    min.y -= s.Camera.BottomPad; max.y += s.Camera.TopPad;
+                }
+
+                // 세로 viewCells 칸이 담기게 줌(경계보다 크면 전체에 맞춤).
+                cam.orthographicSize = Mathf.Min(viewCells * 0.5f, (max.y - min.y) * 0.5f);
                 var cp = cam.transform.position;
                 cam.transform.position = new Vector3(cp.x, cp.y, -10f);   // 2D 직교 표준 z 보장
                 var follow = cam.GetComponent<CameraFollow>();
                 if (follow == null) follow = cam.gameObject.AddComponent<CameraFollow>();
                 follow.enabled = true;
-                follow.Configure(player, new Vector2(-0.5f, -0.5f),
-                                         new Vector2(s.Grid.W - 0.5f, s.Grid.H - 0.5f));
+                follow.Configure(player, min, max);
             }
             else
             {

@@ -313,6 +313,9 @@
         "W": 44,
         "H": 15
       },
+      "camera": {
+        "top_pad": 3
+      },
       "jump_units": 3.5,
       "source": {
         "pos": [
@@ -800,6 +803,9 @@
         "H": 47,
         "fine_grid": true,
         "note": "벽 x41 뒤 삭제로 폭 47→42 트림 (cols 0-41)"
+      },
+      "camera": {
+        "view_cells": 24
       },
       "source": {
         "pos": [

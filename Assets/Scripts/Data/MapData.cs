@@ -22,6 +22,7 @@ namespace TowardTheStars.Data
     {
         [JsonProperty("stage")] public int Stage;
         [JsonProperty("grid")] public GridData Grid;
+        [JsonProperty("camera")] public CameraSettings Camera;   // 스테이지별 카메라 오버라이드(선택)
         [JsonProperty("jump_units")] public float JumpUnits;
 
         [JsonProperty("source")] public Endpoint Source;      // 랜즈/광원
@@ -65,6 +66,15 @@ namespace TowardTheStars.Data
         [JsonProperty("W")] public int W;
         [JsonProperty("H")] public int H;
         [JsonProperty("fine_grid")] public bool FineGrid;
+    }
+
+    // 스테이지별 카메라 오버라이드. 모든 값 선택(기본 0 = MapLoader 기본값/그리드 경계 사용).
+    public class CameraSettings
+    {
+        [JsonProperty("view_cells")] public float ViewCells;   // 화면 세로에 담을 셀 수(작을수록 확대). 0=기본
+        [JsonProperty("top_pad")] public float TopPad;         // 상단 경계에 더할 여유 칸(화면 상한선↑)
+        [JsonProperty("bottom_pad")] public float BottomPad;   // 하단 여유 칸
+        [JsonProperty("side_pad")] public float SidePad;       // 좌우 여유 칸
     }
 
     public class Endpoint
