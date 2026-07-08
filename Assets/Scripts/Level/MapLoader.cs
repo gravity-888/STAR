@@ -4,6 +4,7 @@ using UnityEngine;
 using TowardTheStars.Data;
 using TowardTheStars.Objects;
 using TowardTheStars.Light;
+using TowardTheStars.Player;
 
 namespace TowardTheStars.Level
 {
@@ -37,6 +38,7 @@ namespace TowardTheStars.Level
         static readonly Color C_Ladder   = new(0.80f, 0.60f, 0.30f);
         static readonly Color C_Decoy    = new(0.95f, 0.35f, 0.35f, 0.6f);
         static readonly Color C_Spawn    = new(1.00f, 1.00f, 1.00f);
+        static readonly Color C_Player   = new(1.00f, 0.45f, 0.15f);
 
         const int Z_TERRAIN = 0, Z_PLATFORM = 1, Z_OBJECT = 5, Z_SPAWN = 8;
 
@@ -86,6 +88,7 @@ namespace TowardTheStars.Level
 
             BuildDecoys(stage);
             BuildSpawn(stage);
+            BuildPlayer(stage);
 
             // 빛 추적기 생성 후 추적
             var tracer = new GameObject("BeamTracer").AddComponent<BeamTracer>();
@@ -118,7 +121,8 @@ namespace TowardTheStars.Level
             {
                 if (!int.TryParse(kv.Key, out int x)) continue;
                 for (int y = 0; y <= kv.Value; y++)
-                    Decor($"terrain_{x}_{y}", new Vector2(x, y), C_Terrain, Z_TERRAIN, Vector2.one);
+                    // 지형은 밟는 바닥 → 솔리드 콜라이더(플레이어 지지). 빛 차단은 벽이 담당.
+                    SolidDecor($"terrain_{x}_{y}", new Vector2(x, y), C_Terrain, Z_TERRAIN, Vector2.one, Vector2.one);
             }
         }
 
@@ -139,8 +143,9 @@ namespace TowardTheStars.Level
             {
                 if (p.Missing || p.Cells == null) continue;   // stage4 미설계 발판 스킵 [갭]
                 foreach (var c in p.Cells)
-                    Decor($"plat_{p.Id}_{c[0]}_{c[1]}", new Vector2(c[0], c[1]),
-                          C_Platform, Z_PLATFORM, new Vector2(1f, 0.4f));
+                    // 발판은 밟고 서는 표면 → 얇은(0.4) 솔리드 콜라이더. 빛은 벽이 아니라 통과.
+                    SolidDecor($"plat_{p.Id}_{c[0]}_{c[1]}", new Vector2(c[0], c[1]),
+                          C_Platform, Z_PLATFORM, new Vector2(1f, 0.4f), new Vector2(1f, 0.4f));
             }
         }
 
@@ -229,6 +234,25 @@ namespace TowardTheStars.Level
             Decor("spawn", new Vector2(s.Spawn[0], s.Spawn[1]), C_Spawn, Z_SPAWN, Vector2.one * 0.6f);
         }
 
+        // 스폰 지점에 플레이어 액터 배치(Rigidbody2D + 콜라이더 + PlayerController).
+        void BuildPlayer(StageData s)
+        {
+            if (s.Spawn == null || s.Spawn.Length < 2) return;
+            var pos = new Vector2(s.Spawn[0], s.Spawn[1]);
+            var go = new GameObject("Player");
+            go.transform.SetParent(_root, false);
+            go.transform.position = new Vector3(pos.x, pos.y, 0f);
+
+            var body = go.AddComponent<BoxCollider2D>();
+            body.size = new Vector2(0.6f, 0.9f);          // 몸통(트리거 아님) — 지형/발판과 충돌
+            var rb = go.AddComponent<Rigidbody2D>();
+            rb.gravityScale = 3f;
+            rb.freezeRotation = true;
+            go.AddComponent<PlayerController>();
+
+            Visual(go.transform, C_Player, Z_SPAWN + 1, new Vector2(0.6f, 0.9f));
+        }
+
         // ---------- 유틸 ----------
 
         // 솔리드 콜라이더가 있는 오브젝트 루트(스케일 1). 시각은 자식으로 분리.
@@ -238,6 +262,14 @@ namespace TowardTheStars.Level
             go.transform.SetParent(_root, false);
             go.transform.position = new Vector3(pos.x, pos.y, 0f);
             go.AddComponent<BoxCollider2D>().size = new Vector2(colliderSize, colliderSize);
+            return go;
+        }
+
+        // 시각 + 솔리드(트리거 아님) BoxCollider2D. 플레이어가 밟고 설 수 있는 지형/발판용.
+        GameObject SolidDecor(string name, Vector2 pos, Color col, int order, Vector2 scale, Vector2 colliderSize)
+        {
+            var go = Decor(name, pos, col, order, scale);
+            go.AddComponent<BoxCollider2D>().size = colliderSize;
             return go;
         }
 
