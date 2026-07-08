@@ -50,11 +50,12 @@ Assets/Scripts/
   Light/
     Beam.cs              Beam 구조체 + IBeamHit 인터페이스
     BeamTracer.cs        빛 추적(스택 기반, 프리즘 분기 지원) + LineRenderer 렌더. 각 오브젝트에 위임만.
+                         ★매 프레임(LateUpdate) 재추적 → 플레이어 등 움직이는 차폐물 실시간 반영. 버퍼 재사용.
   Objects/               ★각 오브젝트가 자기 연산 담당
     LightSource.cs       랜즈/광원 — 빛 발사
     Mirror.cs            거울 — 반사 (IBeamHit). Rotate(steps)로 22.5° 회전(Phase 4용 준비됨)
     Prism.cs             프리즘 — 분기 0.5+0.5 (IBeamHit). 출력방향은 맵 out에서 주입
-    GateDetector.cs      게이트 수광부 — 흡수·광량누적·개방 (IBeamHit)
+    GateDetector.cs      게이트 수광부 — 흡수·광량누적·개방 (IBeamHit). BeginFrame/Commit 엣지 트리거(OnOpen 1회)
     Ladder.cs            사다리(Stage4) — 등반용 트리거. 광학 상호작용 없음(빛 통과)
 ```
 
@@ -111,7 +112,7 @@ Assets/Scripts/
 - **점프 = 가변 높이**: `jumpHeightCells=3.5`(최대, 맵 jump_units 기준) + `jumpCutMultiplier=0.45`. 최대 속도는 중력에서 역산(정점 3.5칸 유지), 상승 중 버튼을 떼면 상승속도 감쇠 → 짧게 누르면 낮은 점프(≈0.7칸). `moveSpeed 6 / climbSpeed 5`는 임시값.
 - **벽 끼임 방지 처리됨**: 플레이어 콜라이더에 마찰 0 머티리얼 + `edgeRadius 0.03` → 벽면·타일 이음새에 안 걸림. 그래도 심하면 지형/발판을 CompositeCollider2D로 병합 고려.
 - **발판 빛 투과 처리됨**: 발판 콜라이더에 `BeamTransparent` 마커 → `BeamTracer`가 히트를 건너뛰고 관통. 발판은 밟히되 빛은 통과(맵 `transmit:true`와 일치). 벽은 마커 없어 차단.
-- **플레이어가 빛을 막음 = 의도(확정)**: 플레이어 몸은 빛을 차단(그림자 역할). Phase 4에서 거울을 돌리면 `Trace()`가 재실행되므로 플레이어가 빔 경로에 서 있으면 거기서 멈춘다 — 정상 동작.
+- **플레이어가 빛을 막음 = 의도(확정)**: 플레이어 몸은 빛을 차단(그림자 역할). `BeamTracer`가 **매 프레임 재추적**하므로 플레이어가 움직이면 빔 경로가 실시간으로 갱신됨(이전엔 거울 변화 때만 갱신돼 스테일 문제 있었음 — 해결).
 - **카메라**: `FrameCamera`가 스테이지 전체를 담아 플레이어가 작게 보임. 추후 카메라 팔로우 추가 후보.
 - **프리팹/아트/오디오/UI 미착수**: 플레이스홀더로 진행 중.
 - IDE(VS/Rider)에 스크립트를 열어둔 채 두면 외부 수정을 덮어쓸 수 있음 — 코드 작업 중엔 닫아두기.

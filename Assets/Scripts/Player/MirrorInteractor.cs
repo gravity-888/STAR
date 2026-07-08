@@ -1,7 +1,6 @@
 using UnityEngine;
 using UnityEngine.InputSystem;
 using TowardTheStars.Objects;
-using TowardTheStars.Light;
 
 namespace TowardTheStars.Player
 {
@@ -18,7 +17,6 @@ namespace TowardTheStars.Player
         Mirror _selected;
         SpriteRenderer _selSprite;
         Color _selBaseColor;
-        BeamTracer _tracer;
 
         void Update()
         {
@@ -30,11 +28,8 @@ namespace TowardTheStars.Player
             int steps = 0;
             if (kb.qKey.wasPressedThisFrame) steps -= 1;   // 반시계
             if (kb.eKey.wasPressedThisFrame) steps += 1;   // 시계
-            if (steps != 0)
-            {
-                _selected.Rotate(steps);
-                Retrace();
-            }
+            // 회전만 하면 됨 — 빛은 BeamTracer가 매 프레임(LateUpdate) 재추적.
+            if (steps != 0) _selected.Rotate(steps);
         }
 
         // 반경 내 가장 가까운 비고정 거울을 고른다.
@@ -66,12 +61,6 @@ namespace TowardTheStars.Player
                 _selBaseColor = sr.color;
                 sr.color = highlightColor;
             }
-        }
-
-        void Retrace()
-        {
-            if (_tracer == null) _tracer = FindFirstObjectByType<BeamTracer>();
-            if (_tracer != null) _tracer.Trace();
         }
 
         void OnDisable()

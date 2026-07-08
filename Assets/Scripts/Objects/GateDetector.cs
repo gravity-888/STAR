@@ -6,11 +6,13 @@ using TowardTheStars.Light;
 namespace TowardTheStars.Objects
 {
     // 게이트 수광부: 도달한 광량을 누적, 임계(Σ≥1.0) 이상이면 개방[GDD §28·§29].
-    // 빛을 흡수하므로 이어지는 광선은 없음. 재추적 전 ResetAcc()로 초기화.
+    // 빛을 흡수하므로 이어지는 광선은 없음.
+    // 매 프레임 재추적 흐름: BeginFrame()으로 누적만 0으로 → Interact로 누적 → Commit()에서 개폐 확정.
+    // 개폐는 엣지 트리거(상태가 바뀔 때만 색/이벤트) — 켜져 있는 동안 OnOpen이 매 프레임 터지지 않음.
     public class GateDetector : MonoBehaviour, IBeamHit
     {
         [SerializeField] float threshold = 1.0f;
-        float acc;
+        float _acc;
 
         public bool IsOpen { get; private set; }
         public event Action OnOpen;
@@ -23,28 +25,21 @@ namespace TowardTheStars.Objects
 
         public void Interact(Beam incoming, Vector2 hitCenter, List<Beam> outgoing)
         {
-            Add(incoming.intensity);   // 흡수: outgoing 없음
+            _acc += incoming.intensity;   // 흡수: outgoing 없음. 개폐 판정은 Commit에서.
         }
 
-        public void Add(float intensity)
-        {
-            acc += intensity;
-            if (!IsOpen && acc >= threshold - 0.001f)
-            {
-                IsOpen = true;
-                if (visual != null) visual.color = openColor;
-                OnOpen?.Invoke();
-            }
-        }
+        // 재추적 시작: 누적만 초기화(상태/색/이벤트는 건드리지 않음).
+        public void BeginFrame() => _acc = 0f;
 
-        public void ResetAcc()
+        // 재추적 종료: 누적 광량으로 개폐 확정. 상태가 바뀔 때만 색 변경·이벤트 발생.
+        public void Commit()
         {
-            acc = 0f;
-            if (IsOpen)
-            {
-                IsOpen = false;
-                if (visual != null && _closedCached) visual.color = _closedColor;
-            }
+            bool open = _acc >= threshold - 0.001f;
+            if (open == IsOpen) return;
+            IsOpen = open;
+            if (visual != null && (_closedCached || open))
+                visual.color = open ? openColor : _closedColor;
+            if (open) OnOpen?.Invoke();
         }
 
         // 닫힘 색을 기억(첫 배치 시 MapLoader가 호출).

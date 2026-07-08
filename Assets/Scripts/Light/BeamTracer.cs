@@ -16,23 +16,33 @@ namespace TowardTheStars.Light
         readonly List<LineRenderer> _pool = new();
         Material _mat;
 
-        // 거울/프리즘 상태 변경 시 호출(Phase 4). 광원부터 다시 추적.
+        // 재사용 버퍼(매 프레임 재추적 시 GC 억제) + 정적 소스/게이트 캐시.
+        readonly List<(Vector2 a, Vector2 b)> _segments = new();
+        readonly Stack<(Beam beam, int depth)> _stack = new();
+        readonly List<Beam> _outgoing = new();
+        LightSource[] _sources;
+        GateDetector[] _gates;
+
+        // 매 프레임 재추적: 플레이어 등 움직이는 차폐물의 최신 위치를 반영(물리 후 LateUpdate).
+        // 거울 회전은 별도 호출 없이 다음 LateUpdate에서 자동 반영. 에디트 모드 미리보기는 MapLoader가 1회 호출.
+        void LateUpdate() => Trace();
+
         public void Trace()
         {
             Physics2D.queriesStartInColliders = false;   // 시작점이 자기 콜라이더 안이어도 무시
             Physics2D.queriesHitTriggers = false;        // 사다리(Trigger)는 빛 통과
             Physics2D.SyncTransforms();
 
-            foreach (var gate in Object.FindObjectsByType<GateDetector>(FindObjectsSortMode.None))
-                gate.ResetAcc();
+            _gates ??= Object.FindObjectsByType<GateDetector>(FindObjectsSortMode.None);
+            foreach (var gate in _gates) if (gate != null) gate.BeginFrame();
 
-            var segments = new List<(Vector2 a, Vector2 b)>();
-            var stack = new Stack<(Beam beam, int depth)>();
+            var segments = _segments; segments.Clear();
+            var stack = _stack; stack.Clear();
+            var outgoing = _outgoing;
 
-            foreach (var src in Object.FindObjectsByType<LightSource>(FindObjectsSortMode.None))
-                stack.Push((src.Emit(), 0));
+            _sources ??= Object.FindObjectsByType<LightSource>(FindObjectsSortMode.None);
+            foreach (var src in _sources) if (src != null) stack.Push((src.Emit(), 0));
 
-            var outgoing = new List<Beam>();
             while (stack.Count > 0)
             {
                 var (beam, depth) = stack.Pop();
@@ -82,6 +92,9 @@ namespace TowardTheStars.Light
                     segments.Add((beam.origin, hit.point));
                 }
             }
+
+            // 누적 완료 → 게이트 개폐 확정(엣지 트리거)
+            foreach (var gate in _gates) if (gate != null) gate.Commit();
 
             Render(segments);
         }
