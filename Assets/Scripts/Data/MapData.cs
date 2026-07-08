@@ -3,14 +3,10 @@ using Newtonsoft.Json;
 
 namespace TowardTheStars.Data
 {
-    // stages_unified.json 전체 매핑.
-    // 스테이지마다 필드가 다르므로(예: stage2=decoys/wall, stage3=prism/terrain, stage4=layout),
-    // 없는 필드는 Newtonsoft가 기본값(null/빈 컬렉션)으로 둔다. 규약: [GDD §30] rotation_z = -angle.
+    // stages_unified.json 매핑. MapLoader가 이 데이터를 읽어 각 오브젝트에 변수를 주입한다.
+    // 규약[GDD §30]: rotation_z = -angle_deg. 좌표 y는 위로 증가(반전 없음).
     public class UnifiedData
     {
-        [JsonProperty("project")] public string Project;
-        [JsonProperty("demo_scope")] public string DemoScope;
-        [JsonProperty("angle_convention")] public string AngleConvention;
         [JsonProperty("unit")] public UnitData Unit;
         [JsonProperty("stages")] public Dictionary<string, StageData> Stages = new();
     }
@@ -27,26 +23,24 @@ namespace TowardTheStars.Data
         [JsonProperty("grid")] public GridData Grid;
         [JsonProperty("jump_units")] public float JumpUnits;
 
-        [JsonProperty("source")] public Endpoint Source;
-        [JsonProperty("prism")] public PrismData Prism;      // null 가능(stage1/2/4)
-        [JsonProperty("gate")] public GateData Gate;
+        [JsonProperty("source")] public Endpoint Source;      // 랜즈/광원
+        [JsonProperty("prism")] public PrismData Prism;        // null 가능
+        [JsonProperty("gate")] public GateData Gate;           // 수광부
 
         [JsonProperty("mirrors")] public List<MirrorData> Mirrors = new();
         [JsonProperty("platforms")] public List<PlatformData> Platforms = new();
         [JsonProperty("decoys")] public List<DecoyData> Decoys = new();
+        [JsonProperty("ladders")] public List<LadderData> Ladders = new();   // Stage 4 신규
 
         [JsonProperty("spawn")] public int[] Spawn;
         [JsonProperty("gate_open_zone")] public List<int[]> GateOpenZone = new();
 
-        // 지형/벽: 스테이지별로 키가 다름(wall / wall_x25)
-        [JsonProperty("terrain")] public Dictionary<string, int> Terrain = new();   // x → 지면 표면 높이(솔리드)
+        [JsonProperty("terrain")] public Dictionary<string, int> Terrain = new();
         [JsonProperty("wall")] public List<int[]> Wall = new();
         [JsonProperty("wall_x25")] public List<int[]> WallX25 = new();
 
         [JsonProperty("fixed_mirrors")] public List<string> FixedMirrors = new();
-        [JsonProperty("status")] public string Status;
 
-        // 모든 벽 셀을 한 번에 얻기 위한 헬퍼(스테이지별 키 통합).
         public IEnumerable<int[]> AllWalls()
         {
             if (Wall != null) foreach (var c in Wall) yield return c;
@@ -58,13 +52,13 @@ namespace TowardTheStars.Data
     {
         [JsonProperty("W")] public int W;
         [JsonProperty("H")] public int H;
-        [JsonProperty("fine_grid")] public bool FineGrid;   // stage4 세밀격자 표식
+        [JsonProperty("fine_grid")] public bool FineGrid;
     }
 
     public class Endpoint
     {
         [JsonProperty("pos")] public int[] Pos;
-        [JsonProperty("dir")] public string Dir;   // 화살표: ↙ ↑ ← → ↗ ↖ ↘ ↓
+        [JsonProperty("dir")] public string Dir;   // 화살표 ↙ ↑ ← → ↗ ↖ ↘ ↓
     }
 
     public class GateData
@@ -76,7 +70,7 @@ namespace TowardTheStars.Data
     {
         [JsonProperty("pos")] public int[] Pos;
         [JsonProperty("in")] public string In;
-        [JsonProperty("out")] public string[] Out;   // 프리즘은 다중 출력(직선+상단대각)
+        [JsonProperty("out")] public string[] Out;   // 다중 출력(직선+상단대각)
         [JsonProperty("fixed")] public bool Fixed;
     }
 
@@ -84,19 +78,17 @@ namespace TowardTheStars.Data
     {
         [JsonProperty("id")] public string Id;
         [JsonProperty("pos")] public int[] Pos;
-        [JsonProperty("in")] public string In;
-        [JsonProperty("out")] public string Out;     // 거울은 단일 출력(프리즘과 달리 문자열)
         [JsonProperty("angle_deg")] public float AngleDeg;
-        [JsonProperty("rotation_z")] public float RotationZ;   // = -angle_deg [GDD §30]
-        [JsonProperty("fixed")] public bool Fixed;   // stage1 거울엔 없음 → 기본 false
+        [JsonProperty("rotation_z")] public float RotationZ;
+        [JsonProperty("fixed")] public bool Fixed;
     }
 
     public class PlatformData
     {
         [JsonProperty("id")] public string Id;
         [JsonProperty("cells")] public List<int[]> Cells = new();
-        [JsonProperty("transmit")] public bool Transmit;   // true=빛 투과(빛 판정 레이어 제외)
-        [JsonProperty("MISSING")] public bool Missing;      // stage4 발판 미설계 표식 [갭]
+        [JsonProperty("transmit")] public bool Transmit;
+        [JsonProperty("MISSING")] public bool Missing;
     }
 
     public class DecoyData
@@ -104,5 +96,13 @@ namespace TowardTheStars.Data
         [JsonProperty("id")] public string Id;
         [JsonProperty("pos")] public int[] Pos;
         [JsonProperty("isolated")] public bool Isolated;
+    }
+
+    // Stage 4 사다리: 하단 pos에서 위로 height 칸.
+    public class LadderData
+    {
+        [JsonProperty("id")] public string Id;
+        [JsonProperty("pos")] public int[] Pos;
+        [JsonProperty("height")] public int Height = 1;
     }
 }
