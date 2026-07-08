@@ -149,10 +149,12 @@ namespace TowardTheStars.Level
             if (s.Ladders == null) return;
             foreach (var l in s.Ladders)
             {
-                if (l.Pos == null) continue;
-                int h = Mathf.Max(1, l.Height);
-                var pos = new Vector2(l.Pos[0], l.Pos[1] + (h - 1) * 0.5f);   // 세로 중앙
-                var go = new GameObject($"ladder_{l.Id}");
+                if (l.YSpan == null || l.YSpan.Length < 2) continue;
+                int y0 = Mathf.Min(l.YSpan[0], l.YSpan[1]);
+                int y1 = Mathf.Max(l.YSpan[0], l.YSpan[1]);
+                int h = y1 - y0 + 1;
+                var pos = new Vector2(l.Col, (y0 + y1) * 0.5f);   // 열 col, 세로 중앙
+                var go = new GameObject($"ladder_{l.Col}");
                 go.transform.SetParent(_root, false);
                 go.transform.position = pos;
                 var box = go.AddComponent<BoxCollider2D>();

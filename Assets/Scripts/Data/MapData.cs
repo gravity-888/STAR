@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 
 namespace TowardTheStars.Data
 {
@@ -36,15 +37,26 @@ namespace TowardTheStars.Data
         [JsonProperty("gate_open_zone")] public List<int[]> GateOpenZone = new();
 
         [JsonProperty("terrain")] public Dictionary<string, int> Terrain = new();
-        [JsonProperty("wall")] public List<int[]> Wall = new();
-        [JsonProperty("wall_x25")] public List<int[]> WallX25 = new();
 
         [JsonProperty("fixed_mirrors")] public List<string> FixedMirrors = new();
 
+        // 매핑 안 된 나머지 필드(예: wall / wall_x25 / wall_x41, layout, status ...)를 통째로 수집.
+        [JsonExtensionData] public Dictionary<string, JToken> Extra = new();
+
+        // "wall"로 시작하는 모든 키를 벽으로 취급 → 스테이지마다 다른 wall_* 키를 일반 처리.
         public IEnumerable<int[]> AllWalls()
         {
-            if (Wall != null) foreach (var c in Wall) yield return c;
-            if (WallX25 != null) foreach (var c in WallX25) yield return c;
+            if (Extra == null) yield break;
+            foreach (var kv in Extra)
+            {
+                if (!kv.Key.StartsWith("wall")) continue;
+                if (kv.Value is JArray arr)
+                    foreach (var cell in arr)
+                    {
+                        var c = cell.ToObject<int[]>();
+                        if (c != null && c.Length >= 2) yield return c;
+                    }
+            }
         }
     }
 
@@ -98,11 +110,10 @@ namespace TowardTheStars.Data
         [JsonProperty("isolated")] public bool Isolated;
     }
 
-    // Stage 4 사다리: 하단 pos에서 위로 height 칸.
+    // Stage 4 사다리: 열(col)과 세로 구간(y_span=[yStart,yEnd]).
     public class LadderData
     {
-        [JsonProperty("id")] public string Id;
-        [JsonProperty("pos")] public int[] Pos;
-        [JsonProperty("height")] public int Height = 1;
+        [JsonProperty("col")] public int Col;
+        [JsonProperty("y_span")] public int[] YSpan;   // [아래y, 위y]
     }
 }
