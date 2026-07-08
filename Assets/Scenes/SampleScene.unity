@@ -373,6 +373,8 @@ MonoBehaviour:
   stageKey: stage4
   buildOnStart: 1
   frameCamera: 1
+  followPlayer: 1
+  cameraViewCells: 16
 --- !u!4 &1041966761
 Transform:
   m_ObjectHideFlags: 0
