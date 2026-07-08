@@ -27,10 +27,11 @@
 2. 처음 열면 Unity가 **패키지 자동 복원 + Library 재생성**(몇 분 소요). `Packages/manifest.json`에 Newtonsoft.Json 등 다 기록돼 있어 자동으로 받아짐.
 3. 열리면 `Assets/Scenes/SampleScene` 을 연다.
 
-### 전송 방법 (택1)
-- **A. GitHub (권장, 지속 개발)**: 저장소 만들고 `git push` → 다른 PC에서 `git clone`. (아직 원격 미설정 — 설정 도움 필요하면 요청)
-- **B. git 번들(오프라인)**: `git bundle create star.bundle --all` → 파일 하나 복사 → 다른 PC에서 `git clone star.bundle STAR`. **전체 커밋 히스토리 보존.**
-- **C. 폴더 복사(단순)**: `STAR` 폴더 통째 복사. 단 **`Library/ Temp/ Obj/ Logs/` 는 빼도 됨**(Unity가 재생성, 용량 큼). `.git/ Assets/ Packages/ ProjectSettings/` 는 필수.
+### 전송 방법 — GitHub 연결 완료 ✅
+- **원격 저장소**: `https://github.com/gravity-888/STAR.git` (Private, 브랜치 `main`)
+- **다른 PC에서 처음 받기**: `git clone https://github.com/gravity-888/STAR.git STAR`
+- **일상 동기화**: 작업 시작 전 `git pull`, 마친 뒤 `git add -A && git commit -m "..." && git push`
+- (대안) 오프라인 번들: `git bundle create star.bundle --all`, 또는 폴더 복사(`Library/ Temp/ Logs/` 제외).
 
 > ⚠️ Git 소유권 경고가 뜨면: `git config --global --add safe.directory <프로젝트경로>`
 
@@ -118,7 +119,7 @@ Assets/Scripts/
 
 ---
 
-## 9. 커밋 히스토리 (master, 원격 없음)
+## 9. 커밋 히스토리 (브랜치 `main`, 원격: github.com/gravity-888/STAR)
 
 ```
 31924ba 맵 스키마 확장: 사다리(col/y_span) + 일반화된 wall_* 처리
