@@ -255,6 +255,7 @@ namespace TowardTheStars.Level
             rb.gravityScale = 3f;
             rb.freezeRotation = true;
             go.AddComponent<PlayerController>();
+            go.AddComponent<MirrorInteractor>();   // Phase 4: Q/E로 가까운 거울 회전 + 빛 재추적
 
             Visual(go.transform, C_Player, Z_SPAWN + 1, new Vector2(0.6f, 0.9f));
         }
