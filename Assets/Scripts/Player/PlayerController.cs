@@ -16,9 +16,11 @@ namespace TowardTheStars.Player
         public float moveSpeed = 6f;
         public float climbSpeed = 5f;
 
-        [Header("점프")]
-        public float jumpHeightCells = 3.5f;   // 수직 점프 정점 높이(칸). 맵파일 jump_units=3.5 기준.
-        // 실제 점프 속도는 중력에서 역산 → gravityScale/중력이 바뀌어도 정점 높이 유지.
+        [Header("점프 (가변 높이)")]
+        public float jumpHeightCells = 3.5f;   // 끝까지 누른 최대 정점 높이(칸). 맵파일 jump_units=3.5 기준.
+        [Range(0.05f, 1f)]
+        public float jumpCutMultiplier = 0.45f;  // 상승 중 버튼 떼면 상승속도 ×이 값 → 낮은 점프.
+        // 최대 속도는 중력에서 역산(정점=3.5칸). 짧게 누르면 상승 감쇠로 정점≈0.45²·3.5≈0.7칸.
 
         [Header("접지 판정")]
         public float groundCheckDist = 0.08f;   // 발밑으로 이만큼 캐스트해 바닥 감지
@@ -29,7 +31,8 @@ namespace TowardTheStars.Player
         readonly RaycastHit2D[] _hitBuf = new RaycastHit2D[4];
 
         float _baseGravity;
-        bool _jumpQueued;
+        bool _jumpQueued;      // 이번에 점프 눌림(에지)
+        bool _jumpReleased;    // 점프 버튼 뗌(에지) → 상승 감쇠 신호
 
         int _ladderCount;        // 현재 겹친 사다리 수 (>0 이면 사다리 위)
         bool _climbing;
@@ -53,9 +56,11 @@ namespace TowardTheStars.Player
 
         void Update()
         {
-            // 점프는 에지 트리거 → Update에서 잡아 FixedUpdate에서 소비.
+            // 점프 눌림/뗌은 에지 트리거 → Update에서 잡아 FixedUpdate에서 소비(가변 점프).
             var kb = Keyboard.current;
-            if (kb != null && kb.spaceKey.wasPressedThisFrame) _jumpQueued = true;
+            if (kb == null) return;
+            if (kb.spaceKey.wasPressedThisFrame)  _jumpQueued = true;
+            if (kb.spaceKey.wasReleasedThisFrame) _jumpReleased = true;
         }
 
         void FixedUpdate()
@@ -91,9 +96,18 @@ namespace TowardTheStars.Player
             _rb.gravityScale = _baseGravity;
             var v = _rb.linearVelocity;
             v.x = ix * moveSpeed;
-            if (_jumpQueued && IsGrounded()) v.y = JumpVelocity();
+
+            if (_jumpQueued && IsGrounded())
+            {
+                v.y = JumpVelocity();     // 최대 속도로 발사(끝까지 누르면 3.5칸)
+                _jumpReleased = false;    // 새 점프 → 이전 릴리즈 신호 무시
+            }
+            // 가변 점프: 상승 중 버튼을 떼면 상승속도 감쇠 → 낮은 점프(누른 시간에 비례).
+            if (_jumpReleased && v.y > 0f) v.y *= jumpCutMultiplier;
+
             _rb.linearVelocity = v;
             _jumpQueued = false;
+            _jumpReleased = false;
         }
 
         // 정점 높이 h를 내려면 v0 = sqrt(2·g·h). g = |중력.y|·gravityScale.
