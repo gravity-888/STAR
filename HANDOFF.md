@@ -107,7 +107,7 @@ Assets/Scripts/
 ## 7. 알려진 이슈 / 갭
 
 - **Stage4 M12→게이트 반사각**: 맵 `build_note`에 "물리 정합 재검증 필요" 표기. 빛이 게이트에 정확히 안 닿을 수 있음(맵 데이터 이슈).
-- **점프 = 가변 높이 + 빠른 낙하**: `jumpHeightCells=3.5`(최대) + `jumpCutMultiplier=0.45`(상승 감쇠) + `fallGravityMultiplier=2.2`(상승 중 뗀 순간~착지까지 중력 가중 → 확 떨어짐). 최대 속도는 중력 역산(끝까지 누르면 정점 3.5칸, 이땐 낙하 정상). `moveSpeed 6 / climbSpeed 5`는 임시값.
+- **점프 = 가변 높이**: `jumpHeightCells=3.5`(최대, 맵 jump_units 기준) + `jumpCutMultiplier=0.45`. 최대 속도는 중력에서 역산(정점 3.5칸 유지), 상승 중 버튼을 떼면 상승속도 감쇠 → 짧게 누르면 낮은 점프(≈0.7칸). `moveSpeed 6 / climbSpeed 5`는 임시값.
 - **벽 끼임 방지 처리됨**: 플레이어 콜라이더에 마찰 0 머티리얼 + `edgeRadius 0.03` → 벽면·타일 이음새에 안 걸림. 그래도 심하면 지형/발판을 CompositeCollider2D로 병합 고려.
 - **발판 빛 투과 처리됨**: 발판 콜라이더에 `BeamTransparent` 마커 → `BeamTracer`가 히트를 건너뛰고 관통. 발판은 밟히되 빛은 통과(맵 `transmit:true`와 일치). 벽은 마커 없어 차단.
 - **[열림] 플레이어가 빛을 막음**: 플레이어 콜라이더엔 마커가 없어, 빔 경로에 서면 빛이 플레이어에서 멈춤. 현재 `Trace()`는 빌드 시 1회만 호출돼 실사용 문제는 없으나, Phase 4에서 재추적하면 드러남. "플레이어가 빛을 가리는 게 의도냐"는 설계 판단 필요(원하면 플레이어에도 `BeamTransparent` 부착).
