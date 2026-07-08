@@ -20,6 +20,7 @@ namespace TowardTheStars.Player
         public float jumpHeightCells = 3.5f;   // 끝까지 누른 최대 정점 높이(칸). 맵파일 jump_units=3.5 기준.
         [Range(0.05f, 1f)]
         public float jumpCutMultiplier = 0.45f;  // 상승 중 버튼 떼면 상승속도 ×이 값 → 낮은 점프.
+        public float fallGravityMultiplier = 1.8f;  // 하강 중(v.y<0) 중력 ×이 값 → 낙하 속도↑. 상승·최대높이엔 영향 없음.
         // 최대 속도는 중력에서 역산(정점=3.5칸). 짧게 누르면 상승 감쇠로 정점≈0.45²·3.5≈0.7칸.
 
         [Header("접지 판정")]
@@ -104,7 +105,6 @@ namespace TowardTheStars.Player
             }
 
             // 일반 지상/공중 이동
-            _rb.gravityScale = _baseGravity;
             var v = _rb.linearVelocity;
             v.x = ix * moveSpeed;
 
@@ -120,6 +120,9 @@ namespace TowardTheStars.Player
             }
             // 가변 점프: 상승 중 버튼을 떼면 상승속도 감쇠 → 낮은 점프(누른 시간에 비례).
             if (_jumpReleased && v.y > 0f) v.y *= jumpCutMultiplier;
+
+            // 하강 중이면 중력 가중 → 낙하 속도↑ (상승은 그대로라 최대 점프 3.5칸 유지).
+            _rb.gravityScale = (v.y < 0f) ? _baseGravity * fallGravityMultiplier : _baseGravity;
 
             _rb.linearVelocity = v;
             _jumpQueued = false;
