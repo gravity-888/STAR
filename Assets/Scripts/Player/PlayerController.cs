@@ -24,6 +24,7 @@ namespace TowardTheStars.Player
 
         [Header("접지 판정")]
         public float groundCheckDist = 0.08f;   // 발밑으로 이만큼 캐스트해 바닥 감지
+        public float coyoteTime = 0.1f;          // 발판에서 떨어진 직후 이 시간 동안은 점프 허용(코요테 타임)
 
         Rigidbody2D _rb;
         BoxCollider2D _col;
@@ -33,6 +34,7 @@ namespace TowardTheStars.Player
         float _baseGravity;
         bool _jumpQueued;      // 이번에 점프 눌림(에지)
         bool _jumpReleased;    // 점프 버튼 뗌(에지) → 상승 감쇠 신호
+        float _coyoteTimer;    // 접지 후 남은 코요테 유예(>0이면 공중이어도 점프 가능)
 
         int _ladderCount;        // 현재 겹친 사다리 수 (>0 이면 사다리 위)
         bool _climbing;
@@ -97,9 +99,14 @@ namespace TowardTheStars.Player
             var v = _rb.linearVelocity;
             v.x = ix * moveSpeed;
 
-            if (_jumpQueued && IsGrounded())
+            // 코요테 타임: 접지 중이면 유예 리필, 공중이면 감소. >0인 동안은 점프 허용.
+            if (IsGrounded()) _coyoteTimer = coyoteTime;
+            else _coyoteTimer -= Time.fixedDeltaTime;
+
+            if (_jumpQueued && _coyoteTimer > 0f)
             {
                 v.y = JumpVelocity();     // 최대 속도로 발사(끝까지 누르면 3.5칸)
+                _coyoteTimer = 0f;        // 소비 → 공중 재점프(더블점프) 방지
                 _jumpReleased = false;    // 새 점프 → 이전 릴리즈 신호 무시
             }
             // 가변 점프: 상승 중 버튼을 떼면 상승속도 감쇠 → 낮은 점프(누른 시간에 비례).
