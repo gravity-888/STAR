@@ -38,7 +38,27 @@ namespace TowardTheStars.Light
                 var (beam, depth) = stack.Pop();
                 if (depth > maxDepth) continue;
 
-                var hit = Physics2D.Raycast(beam.origin, beam.dir, maxLength);
+                // 투과 콜라이더(발판)는 건너뛰며 첫 유효 히트(광학 오브젝트/벽)까지 스캔.
+                RaycastHit2D hit = default;
+                Vector2 scanFrom = beam.origin;
+                float remaining = maxLength;
+                for (int skip = 0; skip < 32; skip++)
+                {
+                    hit = Physics2D.Raycast(scanFrom, beam.dir, remaining);
+                    if (hit.collider == null) break;
+                    if (hit.collider.GetComponent<IBeamHit>() == null &&
+                        hit.collider.GetComponent<BeamTransparent>() != null)
+                    {
+                        // 발판: 빛 통과 → 표면 조금 너머로 스캔 지점 전진(같은 발판 재검출 방지)
+                        float step = hit.distance + 0.02f;
+                        remaining -= step;
+                        scanFrom = hit.point + beam.dir * 0.02f;
+                        if (remaining <= 0f) { hit = default; }
+                        else continue;
+                    }
+                    break;
+                }
+
                 if (hit.collider == null)
                 {
                     segments.Add((beam.origin, beam.origin + beam.dir * maxLength));

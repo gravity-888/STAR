@@ -143,9 +143,12 @@ namespace TowardTheStars.Level
             {
                 if (p.Missing || p.Cells == null) continue;   // stage4 미설계 발판 스킵 [갭]
                 foreach (var c in p.Cells)
-                    // 발판은 밟고 서는 표면 → 얇은(0.4) 솔리드 콜라이더. 빛은 벽이 아니라 통과.
-                    SolidDecor($"plat_{p.Id}_{c[0]}_{c[1]}", new Vector2(c[0], c[1]),
+                {
+                    // 발판은 밟고 서는 표면 → 얇은(0.4) 솔리드 콜라이더. 단, 빛은 투과(마커 부착).
+                    var go = SolidDecor($"plat_{p.Id}_{c[0]}_{c[1]}", new Vector2(c[0], c[1]),
                           C_Platform, Z_PLATFORM, new Vector2(1f, 0.4f), new Vector2(1f, 0.4f));
+                    go.AddComponent<BeamTransparent>();
+                }
             }
         }
 
