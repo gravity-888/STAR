@@ -68,10 +68,11 @@ namespace TowardTheStars.Data
         [JsonProperty("fine_grid")] public bool FineGrid;
     }
 
-    // 스테이지별 카메라 오버라이드. 모든 값 선택(기본 0 = MapLoader 기본값/그리드 경계 사용).
+    // 스테이지별 카메라 오버라이드. 모든 값 선택(기본 0/false = MapLoader 기본값/그리드 경계 사용).
     public class CameraSettings
     {
         [JsonProperty("view_cells")] public float ViewCells;   // 화면 세로에 담을 셀 수(작을수록 확대). 0=기본
+        [JsonProperty("fit_width")] public bool FitWidth;      // 가로 폭(좌우 경계)에 맞춰 채움 → 좌우 벽이 화면 끝. 화면비 무관
         [JsonProperty("top_pad")] public float TopPad;         // 상단 경계에 더할 여유 칸(화면 상한선↑)
         [JsonProperty("bottom_pad")] public float BottomPad;   // 하단 여유 칸
         [JsonProperty("side_pad")] public float SidePad;       // 좌우 여유 칸

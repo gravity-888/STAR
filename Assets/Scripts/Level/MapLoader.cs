@@ -331,8 +331,11 @@ namespace TowardTheStars.Level
                     min.y -= s.Camera.BottomPad; max.y += s.Camera.TopPad;
                 }
 
-                // 세로 viewCells 칸이 담기게 줌(경계보다 크면 전체에 맞춤).
-                cam.orthographicSize = Mathf.Min(viewCells * 0.5f, (max.y - min.y) * 0.5f);
+                // 줌 결정: fit_width면 가로 폭에 맞춤(좌우 벽=화면 끝), 아니면 세로 viewCells 칸.
+                float orthoSize = viewCells * 0.5f;
+                if (s.Camera != null && s.Camera.FitWidth)
+                    orthoSize = (max.x - min.x) * 0.5f / Mathf.Max(cam.aspect, 0.01f);
+                cam.orthographicSize = Mathf.Min(orthoSize, (max.y - min.y) * 0.5f);   // 세로 경계 초과 방지
                 var cp = cam.transform.position;
                 cam.transform.position = new Vector3(cp.x, cp.y, -10f);   // 2D 직교 표준 z 보장
                 var follow = cam.GetComponent<CameraFollow>();

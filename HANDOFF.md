@@ -115,7 +115,7 @@ Assets/Scripts/
 - **발판 빛 투과 처리됨**: 발판 콜라이더에 `BeamTransparent` 마커 → `BeamTracer`가 히트를 건너뛰고 관통. 발판은 밟히되 빛은 통과(맵 `transmit:true`와 일치). 벽은 마커 없어 차단.
 - **플레이어가 빛을 막음 = 의도(확정)**: 플레이어 몸은 빛을 차단(그림자 역할). `BeamTracer`가 **매 프레임 재추적**하므로 플레이어가 움직이면 빔 경로가 실시간으로 갱신됨(이전엔 거울 변화 때만 갱신돼 스테일 문제 있었음 — 해결).
 - **카메라 팔로우 처리됨**: `CameraFollow`가 플레이어를 부드럽게 추적(세로 `cameraViewCells=16`칸 기본) + 레벨 밖은 클램프. 전체 프레이밍이 필요하면 `MapLoader.followPlayer=false`(폴백 `FrameCamera`).
-  - **스테이지별 오버라이드**: 맵 JSON 스테이지에 `"camera": { "view_cells", "top_pad", "bottom_pad", "side_pad" }`(모두 선택). 현재 stage3=`top_pad:3`(상단 여유), stage4=`view_cells:24`(확대율↓). 값 조절은 JSON에서.
+  - **스테이지별 오버라이드**: 맵 JSON 스테이지에 `"camera": { "view_cells", "fit_width", "top_pad", "bottom_pad", "side_pad" }`(모두 선택). `fit_width:true`면 세로 대신 **가로 폭에 맞춰** 줌 → 좌우 벽이 화면 끝(화면비 무관). 현재 stage3=`top_pad:3`(상단 여유), stage4=`fit_width:true`(좌우 벽=화면 끝). 값 조절은 JSON에서.
 - **프리팹/아트/오디오/UI 미착수**: 플레이스홀더로 진행 중.
 - IDE(VS/Rider)에 스크립트를 열어둔 채 두면 외부 수정을 덮어쓸 수 있음 — 코드 작업 중엔 닫아두기.
 
