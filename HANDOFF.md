@@ -1,7 +1,7 @@
 # 별을 향해 (Toward the Stars) — 개발 인수인계
 
 > 다른 컴퓨터에서 이어서 개발하기 위한 정리본. **이 파일부터 읽으면 됩니다.**
-> 최종 갱신: 2026-07-09 (Phase 5: 플레이어)
+> 최종 갱신: 2026-07-12 (Phase 6: 스테이지 전환)
 
 ---
 
@@ -11,8 +11,8 @@
 - **엔진**: **Unity 6.3 (정확히 `6000.3.19f1`)** · 2D URP
 - **코어 루프**: 광원(랜즈)에서 빛 발사 → 플레이어가 거울/프리즘 조작 → 게이트 수광부에 광량 Σ≥1.0 충족 → 다음 스테이지
 - **데모 범위**: Stage 1~4
-- **프로젝트 루트**: `D:\STAR\STAR\` (git 저장소 = 이 폴더)
-- **기획 원본**: `D:\게임 개발\` (Claude Chat 기획서 7종 + `CLAUDE.md` 규약). **게임 코드는 이 폴더를 읽지 않음** — 참고용.
+- **프로젝트 루트**: `E:\STAR\STAR\` (git 저장소 = 이 폴더)
+- **기획 원본**: `E:\게임 개발\` (Claude Chat 기획서 7종 + `CLAUDE.md` 규약). **게임 코드는 이 폴더를 읽지 않음** — 참고용.
 
 ---
 
@@ -43,10 +43,12 @@
 
 ```
 Assets/Scripts/
-  Data/MapData.cs        맵 JSON → C# 모델 (Newtonsoft). wall* 키 일반 수집, 사다리=col/y_span
+  Data/MapData.cs        맵 JSON → C# 모델 (Newtonsoft). wall* 키 일반 수집, 사다리=col/y_span. wall_transmit=벽이지만 빛 통과 셀(플레이어는 막음)
   Level/
     GridMap.cs           그리드↔월드 좌표 + 화살표(↙↑←→) 방향 해석
-    MapLoader.cs         ★맵 스크립트: Maps의 TextAsset 읽어 오브젝트 배치·변수 주입 (로직 없음)
+    MapLoader.cs         ★맵 스크립트: Maps의 TextAsset 읽어 오브젝트 배치·변수 주입. stageOrder로 스테이지 진행(GoToNext)도 담당
+    ScreenFader.cs       스테이지 전환 페이드 인/아웃(자체 ScreenSpaceOverlay Canvas+Image, DontDestroyOnLoad)
+    GateExit.cs          게이트 개폐부 통과 트리거 — 개방 상태에서 플레이어 진입 시 MapLoader.GoToNext() 호출
   Light/
     Beam.cs              Beam 구조체 + IBeamHit 인터페이스
     BeamTracer.cs        빛 추적(스택 기반, 프리즘 분기 지원) + LineRenderer 렌더. 각 오브젝트에 위임만.
@@ -55,7 +57,8 @@ Assets/Scripts/
     LightSource.cs       랜즈/광원 — 빛 발사
     Mirror.cs            거울 — 반사 (IBeamHit). Rotate(steps)로 22.5° 회전(Phase 4용 준비됨)
     Prism.cs             프리즘 — 분기 0.5+0.5 (IBeamHit). 출력방향은 맵 out에서 주입
-    GateDetector.cs      게이트 수광부 — 흡수·광량누적·개방 (IBeamHit). BeginFrame/Commit 엣지 트리거(OnOpen 1회)
+    GateDetector.cs      게이트 수광부 — 흡수·광량누적·개방 (IBeamHit). BeginFrame/Commit 엣지 트리거(OnOpen 1회, OnStateChanged 양방향)
+    GateDoor.cs          게이트 개폐부(문) — gate_open_zone 셀. 닫힘=솔리드 콜라이더로 차단 / 열림=콜라이더 off 통과. 수광부 OnStateChanged 구독
     Ladder.cs            사다리(Stage4) — 등반용 트리거. 광학 상호작용 없음(빛 통과)
 ```
 
@@ -94,7 +97,10 @@ Assets/Scripts/
 | 빛 반사(거울) | ✅ Stage2 광원→거울4개→게이트 도달 확인 |
 | 거울 회전(Phase 4) | ✅ 플레이어가 가까운 거울 선택(흰색 하이라이트) → Q/E 22.5° 회전 → 빛 즉시 재추적 |
 | 프리즘 분기 | ✅ 구현(0.5+0.5), Stage3 검증은 플레이로 확인 필요 |
-| 게이트 개방 | ✅ Σ≥1.0 시 초록으로 변함 |
+| 게이트 개방 | ✅ Σ≥1.0 시 수광부 초록 + **개폐부(문) 열림** / 미충족이면 문이 닫혀 통로 차단 |
+| 스테이지 진행 | ✅ **양방향**: 게이트 통과→다음(GoToNext), 입장 통로로 되돌아가면→이전(GoToPrev, exit_spawn=출구쪽 등장). GateExit 트리거(dir±1), stageOrder. 정방향 스폰=입장 통로(벽 우측 1칸), 역방향 스폰=exit_spawn(게이트 좌측 1칸; stage3는 개폐부 우측 땅). stage3 게이트=바닥 해치(문칸 밑 terrain=-1) |
+| 광원 화면 밖 | ✅ stage1~3 광원을 광선축(↙) 따라 우상단으로 밀어 화면 밖(x>gridW-0.5). 퍼즐 불변. 벽 그레이즈는 wall_transmit로 예외(stage1 [25,12]; stage3는 우측벽을 x=44로 밀어 그레이즈 소멸→예외 불필요). stage4는 제외 |
+| 전환 중 조작잠금 | ✅ 전환 연출(페이드+빌드+페이드) 동안 `PlayerController.ControlsLocked`=true → 이동/점프/등반·거울조작(Q/E) 정지 + 플레이어 완전 정지(속도·중력 0). MapLoader.Transition이 토글 |
 | 사다리 | ✅ Stage4 배치(5줄기) + **등반 로직 구현(Phase 5)** |
 | 시각 | ⚠️ **전부 색깔 사각형 플레이스홀더**(프리팹·스프라이트 미제작) |
 | 플레이어 | ✅ **Phase 5: 이동/점프/사다리 등반**(스폰 지점 자동 생성). 신 Input System. |

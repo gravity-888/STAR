@@ -35,7 +35,10 @@ namespace TowardTheStars.Data
         [JsonProperty("ladders")] public List<LadderData> Ladders = new();   // Stage 4 신규
 
         [JsonProperty("spawn")] public int[] Spawn;
+        [JsonProperty("exit_spawn")] public int[] ExitSpawn;   // 역주행(이전 스테이지로) 진입 시 스폰 — 출구(게이트)쪽
         [JsonProperty("gate_open_zone")] public List<int[]> GateOpenZone = new();
+        [JsonProperty("wall_transmit")] public List<int[]> WallTransmit = new();   // 벽이지만 빛을 통과시키는 셀(플레이어는 막음)
+        [JsonProperty("entrance")] public List<int[]> Entrance = new();            // 입장 통로: 좌측벽에 뚫는 구멍 셀(벽 생략)
 
         [JsonProperty("terrain")] public Dictionary<string, int> Terrain = new();
 

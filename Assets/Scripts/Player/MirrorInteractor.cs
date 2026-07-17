@@ -20,6 +20,8 @@ namespace TowardTheStars.Player
 
         void Update()
         {
+            if (PlayerController.ControlsLocked) return;   // 전환 연출 중 거울 조작 무시
+
             UpdateSelection();
 
             var kb = Keyboard.current;

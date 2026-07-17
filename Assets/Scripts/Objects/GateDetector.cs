@@ -15,7 +15,8 @@ namespace TowardTheStars.Objects
         float _acc;
 
         public bool IsOpen { get; private set; }
-        public event Action OnOpen;
+        public event Action OnOpen;                 // 열리는 엣지에서 1회(스테이지 진행 등)
+        public event Action<bool> OnStateChanged;   // 개폐 상태가 바뀔 때마다(문 여닫이용)
 
         [Header("개방 시 색 변경(선택)")]
         public SpriteRenderer visual;
@@ -39,6 +40,7 @@ namespace TowardTheStars.Objects
             IsOpen = open;
             if (visual != null && (_closedCached || open))
                 visual.color = open ? openColor : _closedColor;
+            OnStateChanged?.Invoke(open);   // 개폐부(문) 여닫이 — 양방향
             if (open) OnOpen?.Invoke();
         }
 

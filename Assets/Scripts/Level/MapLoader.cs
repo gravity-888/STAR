@@ -1,3 +1,4 @@
+using System.Collections;
 using System.Collections.Generic;
 using Newtonsoft.Json;
 using UnityEngine;
@@ -22,6 +23,12 @@ namespace TowardTheStars.Level
         [Header("배치할 스테이지")]
         public string stageKey = "stage2";
 
+        [Header("스테이지 진행 순서(게이트 통과 시 다음으로)")]
+        public string[] stageOrder = { "stage1", "stage2", "stage3", "stage4" };
+        ScreenFader _fader;
+        bool _transitioning;
+        bool _reverseEntry;   // true면 이번 Build는 역주행 진입 → exit_spawn 사용
+
         [Header("옵션")]
         public bool buildOnStart = true;
         public bool frameCamera = true;      // 팔로우 미사용 시 스테이지 전체를 프레이밍(폴백)
@@ -33,6 +40,7 @@ namespace TowardTheStars.Level
         // 색 팔레트(플레이스홀더)
         static readonly Color C_Terrain  = new(0.35f, 0.26f, 0.18f);
         static readonly Color C_Wall     = new(0.20f, 0.20f, 0.24f);
+        static readonly Color C_WallGlass = new(0.45f, 0.55f, 0.70f, 0.45f);   // 빛 통과 예외 벽(반투명)
         static readonly Color C_Platform = new(0.30f, 0.55f, 0.95f, 0.55f);
         static readonly Color C_Lens     = new(1.00f, 0.90f, 0.30f);
         static readonly Color C_Gate     = new(0.30f, 0.90f, 0.45f);
@@ -91,6 +99,7 @@ namespace TowardTheStars.Level
             BuildGate(stage);
 
             BuildDecoys(stage);
+            BuildEntrance(stage);   // 입장 통로 역방향 트리거
             BuildSpawn(stage);
             var player = BuildPlayer(stage);
 
@@ -103,6 +112,45 @@ namespace TowardTheStars.Level
 
             Debug.Log($"[MapLoader] '{stageKey}' 완료 — 거울 {stage.Mirrors?.Count ?? 0} · " +
                       $"프리즘 {(stage.Prism != null ? 1 : 0)} · 사다리 {stage.Ladders?.Count ?? 0}");
+
+            _reverseEntry = false;   // 1회성 소비 — 다음 Build는 기본(정방향)
+        }
+
+        // 이번 진입에 사용할 스폰: 역주행이면 exit_spawn(출구쪽), 아니면 spawn(입장 통로).
+        int[] EffectiveSpawn(StageData s)
+            => (_reverseEntry && s.ExitSpawn != null && s.ExitSpawn.Length >= 2) ? s.ExitSpawn : s.Spawn;
+
+        // 게이트 통과 시 호출: 다음 스테이지로 페이드 전환. 마지막이면 처음으로 순환(데모).
+        public void GoToNext()
+        {
+            if (_transitioning) return;
+            int idx = System.Array.IndexOf(stageOrder, stageKey);
+            string next = (idx >= 0 && idx + 1 < stageOrder.Length) ? stageOrder[idx + 1] : stageOrder[0];
+            StartCoroutine(Transition(next, false));
+        }
+
+        // 입장 통로 역방향(왼쪽으로 나감) 시 호출: 이전 스테이지로. 첫 스테이지면 이동 없음.
+        public void GoToPrev()
+        {
+            if (_transitioning) return;
+            int idx = System.Array.IndexOf(stageOrder, stageKey);
+            if (idx <= 0) return;
+            StartCoroutine(Transition(stageOrder[idx - 1], true));
+        }
+
+        IEnumerator Transition(string next, bool reverse)
+        {
+            _transitioning = true;
+            Player.PlayerController.ControlsLocked = true;   // 연출 시작 → 조작 잠금
+            if (_fader == null) _fader = ScreenFader.Create();
+            yield return _fader.Fade(0f, 1f);   // 페이드 아웃(어둡게)
+            _reverseEntry = reverse;             // 역주행이면 exit_spawn(출구쪽)에서 등장
+            stageKey = next;
+            Build();
+            yield return null;                   // 빛 추적/카메라 정착 한 프레임
+            yield return _fader.Fade(1f, 0f);   // 페이드 인(밝게)
+            Player.PlayerController.ControlsLocked = false;  // 연출 끝 → 조작 복구
+            _transitioning = false;
         }
 
         [ContextMenu("Clear")]
@@ -132,11 +180,27 @@ namespace TowardTheStars.Level
 
         void BuildWalls(StageData s)
         {
+            // 빛 통과 예외 셀(wall_transmit): 벽이지만 빔은 관통(플레이어는 계속 막힘).
+            var transmit = new HashSet<(int, int)>();
+            if (s.WallTransmit != null)
+                foreach (var c in s.WallTransmit)
+                    if (c != null && c.Length >= 2) transmit.Add((c[0], c[1]));
+
+            // 입장 통로(entrance): 좌측벽에 뚫는 구멍 — 해당 셀은 벽을 세우지 않는다.
+            var entrance = new HashSet<(int, int)>();
+            if (s.Entrance != null)
+                foreach (var c in s.Entrance)
+                    if (c != null && c.Length >= 2) entrance.Add((c[0], c[1]));
+
             foreach (var c in s.AllWalls())
             {
+                if (entrance.Contains((c[0], c[1]))) continue;   // 통로 구멍: 벽 생략
+
                 // 벽은 불투명 → 솔리드 콜라이더(빛 차단). IBeamHit 없음 → 빔 정지.
                 var go = SolidRoot($"wall_{c[0]}_{c[1]}", new Vector2(c[0], c[1]), 1.0f);
-                Visual(go.transform, C_Wall, Z_TERRAIN, Vector2.one);
+                bool passLight = transmit.Contains((c[0], c[1]));
+                Visual(go.transform, passLight ? C_WallGlass : C_Wall, Z_TERRAIN, Vector2.one);
+                if (passLight) go.AddComponent<BeamTransparent>();   // 빛만 통과, 플레이어는 막음
             }
         }
 
@@ -225,6 +289,75 @@ namespace TowardTheStars.Level
             var det = go.AddComponent<GateDetector>();
             det.visual = sr;
             det.CacheClosedColor();
+
+            // 개폐부(문): gate_open_zone 셀들 — 기본 닫힘(차단), 수광부 Σ≥1.0이면 개방(통과).
+            BuildGateDoor(s, det);
+
+            // 통과 감지: 개방 상태에서 플레이어가 개폐부를 지나가면 다음 스테이지로.
+            BuildGateExit(s, det);
+        }
+
+        void BuildGateExit(StageData s, GateDetector det)
+        {
+            if (s.GateOpenZone == null || s.GateOpenZone.Count == 0) return;
+            float minX = float.MaxValue, minY = float.MaxValue, maxX = float.MinValue, maxY = float.MinValue;
+            foreach (var c in s.GateOpenZone)
+            {
+                if (c == null || c.Length < 2) continue;
+                minX = Mathf.Min(minX, c[0]); maxX = Mathf.Max(maxX, c[0]);
+                minY = Mathf.Min(minY, c[1]); maxY = Mathf.Max(maxY, c[1]);
+            }
+            var go = new GameObject("gate_exit");
+            go.transform.SetParent(_root, false);
+            go.transform.position = new Vector3((minX + maxX) * 0.5f, (minY + maxY) * 0.5f, 0f);
+            var trig = go.AddComponent<BoxCollider2D>();
+            trig.isTrigger = true;                                   // 감지 전용(물리 차단 없음)
+            trig.size = new Vector2(maxX - minX + 1f, maxY - minY + 1f);
+            go.AddComponent<GateExit>().Init(det, this, +1);   // 게이트 통과 → 다음 스테이지
+        }
+
+        // 입장 통로에 역방향 트리거: 플레이어가 왼쪽 통로로 나가면 이전 스테이지로.
+        void BuildEntrance(StageData s)
+        {
+            if (s.Entrance == null || s.Entrance.Count == 0) return;
+            float minX = float.MaxValue, minY = float.MaxValue, maxX = float.MinValue, maxY = float.MinValue;
+            foreach (var c in s.Entrance)
+            {
+                if (c == null || c.Length < 2) continue;
+                minX = Mathf.Min(minX, c[0]); maxX = Mathf.Max(maxX, c[0]);
+                minY = Mathf.Min(minY, c[1]); maxY = Mathf.Max(maxY, c[1]);
+            }
+            var go = new GameObject("stage_entrance");
+            go.transform.SetParent(_root, false);
+            go.transform.position = new Vector3((minX + maxX) * 0.5f, (minY + maxY) * 0.5f, 0f);
+            var trig = go.AddComponent<BoxCollider2D>();
+            trig.isTrigger = true;
+            trig.size = new Vector2(maxX - minX + 1f, maxY - minY + 1f);
+            go.AddComponent<GateExit>().Init(null, this, -1);   // 역방향 → 이전 스테이지
+        }
+
+        void BuildGateDoor(StageData s, GateDetector det)
+        {
+            if (s.GateOpenZone == null || s.GateOpenZone.Count == 0) return;
+            var doorGo = new GameObject("gate_door");
+            doorGo.transform.SetParent(_root, false);
+            var door = doorGo.AddComponent<GateDoor>();
+
+            foreach (var c in s.GateOpenZone)
+            {
+                if (c == null || c.Length < 2) continue;
+                // 셀마다 솔리드 콜라이더(1x1) — 닫히면 플레이어·빛을 막는 장벽.
+                var cell = new GameObject($"door_{c[0]}_{c[1]}");
+                cell.transform.SetParent(doorGo.transform, false);
+                cell.transform.position = new Vector3(c[0], c[1], 0f);
+                var col = cell.AddComponent<BoxCollider2D>();
+                col.size = Vector2.one;
+                var sr = Visual(cell.transform, door.closedColor, Z_OBJECT, new Vector2(0.9f, 0.9f));
+                door.Register(col, sr);
+            }
+
+            door.SetOpen(false);                 // 기본 닫힘(막힘)
+            det.OnStateChanged += door.SetOpen;  // 광량 임계 통과 시 즉시 여닫이
         }
 
         void BuildDecoys(StageData s)
@@ -237,15 +370,17 @@ namespace TowardTheStars.Level
 
         void BuildSpawn(StageData s)
         {
-            if (s.Spawn == null || s.Spawn.Length < 2) return;
-            Decor("spawn", new Vector2(s.Spawn[0], s.Spawn[1]), C_Spawn, Z_SPAWN, Vector2.one * 0.6f);
+            var sp = EffectiveSpawn(s);
+            if (sp == null || sp.Length < 2) return;
+            Decor("spawn", new Vector2(sp[0], sp[1]), C_Spawn, Z_SPAWN, Vector2.one * 0.6f);
         }
 
         // 스폰 지점에 플레이어 액터 배치(Rigidbody2D + 콜라이더 + PlayerController). 카메라 추적용 Transform 반환.
         Transform BuildPlayer(StageData s)
         {
-            if (s.Spawn == null || s.Spawn.Length < 2) return null;
-            var pos = new Vector2(s.Spawn[0], s.Spawn[1]);
+            var sp = EffectiveSpawn(s);
+            if (sp == null || sp.Length < 2) return null;
+            var pos = new Vector2(sp[0], sp[1]);
             var go = new GameObject("Player");
             go.transform.SetParent(_root, false);
             go.transform.position = new Vector3(pos.x, pos.y, 0f);

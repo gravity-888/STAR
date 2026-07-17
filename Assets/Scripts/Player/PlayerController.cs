@@ -27,6 +27,8 @@ namespace TowardTheStars.Player
         public float groundCheckDist = 0.08f;   // 발밑으로 이만큼 캐스트해 바닥 감지
         public float coyoteTime = 0.07f;         // 발판에서 떨어진 직후 이 시간 동안은 점프 허용(코요테 타임)
 
+        public static bool ControlsLocked;   // 스테이지 전환 연출 중 입력/이동 정지(MapLoader가 제어)
+
         Rigidbody2D _rb;
         BoxCollider2D _col;
         ContactFilter2D _groundFilter;   // 트리거(=사다리) 제외한 솔리드만
@@ -60,6 +62,8 @@ namespace TowardTheStars.Player
 
         void Update()
         {
+            if (ControlsLocked) return;   // 전환 연출 중 입력 무시
+
             // 점프 눌림/뗌은 에지 트리거 → Update에서 잡아 FixedUpdate에서 소비(가변 점프).
             var kb = Keyboard.current;
             if (kb == null) return;
@@ -73,6 +77,13 @@ namespace TowardTheStars.Player
 
         void FixedUpdate()
         {
+            if (ControlsLocked)   // 전환 연출 중 완전 정지(입력·중력 무효)
+            {
+                _rb.linearVelocity = Vector2.zero;
+                _rb.gravityScale = 0f;
+                return;
+            }
+
             float ix = 0f, iy = 0f;
             var kb = Keyboard.current;
             if (kb != null)
