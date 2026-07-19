@@ -2,6 +2,7 @@ using System.Collections;
 using System.Collections.Generic;
 using Newtonsoft.Json;
 using UnityEngine;
+using UnityEngine.InputSystem;
 using TowardTheStars.Data;
 using TowardTheStars.Objects;
 using TowardTheStars.Light;
@@ -33,6 +34,17 @@ namespace TowardTheStars.Level
         public bool buildOnStart = true;
         public bool frameCamera = true;      // 팔로우 미사용 시 스테이지 전체를 프레이밍(폴백)
 
+        [Header("플레이테스트 편의 키")]
+        public bool restartKey = true;       // R: 현재 스테이지 리셋(막혔을 때 구제)
+        public bool debugStageKeys = true;   // 1~4: 해당 스테이지로 즉시 이동. 데모 빌드 시 끌 것
+
+        // 숫자열 1~9 → stageOrder 인덱스 0~8. Key enum 산술 대신 명시 배열(할당 1회).
+        static readonly Key[] DigitKeys =
+        {
+            Key.Digit1, Key.Digit2, Key.Digit3, Key.Digit4, Key.Digit5,
+            Key.Digit6, Key.Digit7, Key.Digit8, Key.Digit9
+        };
+
         [Header("카메라")]
         public bool followPlayer = true;     // 플레이어 추적 카메라 사용
         public float cameraViewCells = 16f;  // 화면 세로에 담을 셀 수(줌 정도)
@@ -42,6 +54,7 @@ namespace TowardTheStars.Level
         static readonly Color C_Wall     = new(0.20f, 0.20f, 0.24f);
         static readonly Color C_WallGlass = new(0.45f, 0.55f, 0.70f, 0.45f);   // 빛 통과 예외 벽(반투명)
         static readonly Color C_Platform = new(0.30f, 0.55f, 0.95f, 0.55f);
+        static readonly Color C_PlatformSolid = new(0.10f, 0.22f, 0.45f, 1.00f);   // 빛 차단 발판(불투명·진한 남색)
         static readonly Color C_Lens     = new(1.00f, 0.90f, 0.30f);
         static readonly Color C_Gate     = new(0.30f, 0.90f, 0.45f);
         static readonly Color C_Mirror   = new(0.55f, 0.90f, 1.00f);
@@ -60,6 +73,21 @@ namespace TowardTheStars.Level
         void Start()
         {
             if (buildOnStart) Build();
+        }
+
+        // 편의 키 입력. 전환 연출 중에는 무시(_transitioning 가드).
+        void Update()
+        {
+            if (_transitioning) return;
+            var kb = Keyboard.current;
+            if (kb == null) return;
+
+            if (restartKey && kb.rKey.wasPressedThisFrame) { Restart(); return; }
+
+            if (!debugStageKeys) return;
+            int n = Mathf.Min(stageOrder.Length, DigitKeys.Length);
+            for (int i = 0; i < n; i++)
+                if (kb[DigitKeys[i]].wasPressedThisFrame) { GoToIndex(i); return; }
         }
 
         [ContextMenu("Build")]
@@ -138,6 +166,21 @@ namespace TowardTheStars.Level
             StartCoroutine(Transition(stageOrder[idx - 1], true));
         }
 
+        // R키: 현재 스테이지를 처음 상태로 재구축(거울 각도·플레이어 위치 초기화). 퍼즐이 꼬였을 때 구제용.
+        public void Restart()
+        {
+            if (_transitioning) return;
+            StartCoroutine(Transition(stageKey, false));
+        }
+
+        // 디버그: stageOrder[index]로 즉시 이동. 같은 스테이지를 지정하면 Restart와 동일하게 동작.
+        public void GoToIndex(int index)
+        {
+            if (_transitioning) return;
+            if (index < 0 || index >= stageOrder.Length) return;
+            StartCoroutine(Transition(stageOrder[index], false));
+        }
+
         IEnumerator Transition(string next, bool reverse)
         {
             _transitioning = true;
@@ -212,10 +255,12 @@ namespace TowardTheStars.Level
                 if (p.Missing || p.Cells == null) continue;   // stage4 미설계 발판 스킵 [갭]
                 foreach (var c in p.Cells)
                 {
-                    // 발판은 밟고 서는 표면 → 얇은(0.4) 솔리드 콜라이더. 단, 빛은 투과(마커 부착).
+                    // 발판은 밟고 서는 표면 → 얇은(0.4) 솔리드 콜라이더.
+                    // transmit=true면 빛 투과(마커 부착), false면 벽처럼 빛을 막는다 — 색으로 구분.
                     var go = SolidDecor($"plat_{p.Id}_{c[0]}_{c[1]}", new Vector2(c[0], c[1]),
-                          C_Platform, Z_PLATFORM, new Vector2(1f, 0.4f), new Vector2(1f, 0.4f));
-                    go.AddComponent<BeamTransparent>();
+                          p.Transmit ? C_Platform : C_PlatformSolid, Z_PLATFORM,
+                          new Vector2(1f, 0.4f), new Vector2(1f, 0.4f));
+                    if (p.Transmit) go.AddComponent<BeamTransparent>();
                 }
             }
         }
@@ -393,7 +438,10 @@ namespace TowardTheStars.Level
             var rb = go.AddComponent<Rigidbody2D>();
             rb.gravityScale = 3f;
             rb.freezeRotation = true;
-            go.AddComponent<PlayerController>();
+            var pc = go.AddComponent<PlayerController>();
+            // 레벨 밖 낙하·이탈 시 스폰 복귀. 경계 기준은 카메라 클램프와 동일.
+            if (s.Grid != null)
+                pc.SetRespawn(pos, new Vector2(-0.5f, -0.5f), new Vector2(s.Grid.W - 0.5f, s.Grid.H - 0.5f));
             go.AddComponent<MirrorInteractor>();   // Phase 4: Q/E로 가까운 거울 회전 + 빛 재추적
 
             Visual(go.transform, C_Player, Z_SPAWN + 1, new Vector2(0.6f, 0.9f));

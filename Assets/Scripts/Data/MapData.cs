@@ -113,7 +113,8 @@ namespace TowardTheStars.Data
     {
         [JsonProperty("id")] public string Id;
         [JsonProperty("cells")] public List<int[]> Cells = new();
-        [JsonProperty("transmit")] public bool Transmit;
+        // 기본 투과. false면 빛을 막는 발판(밟히기는 하되 빛은 통과 못 함) — 우회 경로 차단용.
+        [JsonProperty("transmit")] public bool Transmit = true;
         [JsonProperty("MISSING")] public bool Missing;
     }
 

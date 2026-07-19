@@ -27,6 +27,9 @@ namespace TowardTheStars.Player
         public float groundCheckDist = 0.08f;   // 발밑으로 이만큼 캐스트해 바닥 감지
         public float coyoteTime = 0.07f;         // 발판에서 떨어진 직후 이 시간 동안은 점프 허용(코요테 타임)
 
+        [Header("리스폰")]
+        public float boundsMargin = 4f;   // 레벨 경계에서 이만큼 벗어나면 스폰으로 자동 복귀(낙사·이탈 구제)
+
         public static bool ControlsLocked;   // 스테이지 전환 연출 중 입력/이동 정지(MapLoader가 제어)
 
         Rigidbody2D _rb;
@@ -42,6 +45,10 @@ namespace TowardTheStars.Player
 
         int _ladderCount;        // 현재 겹친 사다리 수 (>0 이면 사다리 위)
         bool _climbing;
+
+        Vector2 _spawnPos;                  // 이번 스테이지 스폰 지점(MapLoader 주입)
+        Vector2 _boundsMin, _boundsMax;     // 레벨 경계(카메라 클램프와 동일 기준)
+        bool _hasBounds;
 
         void Awake()
         {
@@ -83,6 +90,9 @@ namespace TowardTheStars.Player
                 _rb.gravityScale = 0f;
                 return;
             }
+
+            // 레벨 밖으로 떨어지거나 벗어나면 스폰으로 복귀. 퍼즐 진행(거울 각도)은 그대로 둔다.
+            if (_hasBounds && OutOfBounds()) { Respawn(); return; }
 
             float ix = 0f, iy = 0f;
             var kb = Keyboard.current;
@@ -138,6 +148,43 @@ namespace TowardTheStars.Player
             _rb.linearVelocity = v;
             _jumpQueued = false;
             _jumpReleased = false;
+        }
+
+        // MapLoader가 Build 시 주입: 스폰 지점 + 레벨 경계. 주입 전에는 경계 판정을 하지 않는다.
+        public void SetRespawn(Vector2 spawnPos, Vector2 boundsMin, Vector2 boundsMax)
+        {
+            _spawnPos = spawnPos;
+            _boundsMin = boundsMin;
+            _boundsMax = boundsMax;
+            _hasBounds = true;
+        }
+
+        // 스폰 지점으로 즉시 복귀. 이동·점프·등반 상태를 전부 초기화해 낙하 속도가 이월되지 않게 한다.
+        public void Respawn()
+        {
+            _rb.linearVelocity = Vector2.zero;
+
+            // 보간(Interpolate)이 켜진 채 순간이동하면 이전 위치→스폰을 잇는 잔상이 한 프레임 보인다.
+            // 이동 동안만 보간을 끄고 위치 이력을 함께 리셋한다.
+            var interp = _rb.interpolation;
+            _rb.interpolation = RigidbodyInterpolation2D.None;
+            _rb.position = _spawnPos;
+            transform.position = new Vector3(_spawnPos.x, _spawnPos.y, 0f);
+            _rb.interpolation = interp;
+
+            _rb.gravityScale = _baseGravity;
+            _ladderCount = 0;
+            _climbing = false;
+            _coyoteTimer = 0f;
+            _jumpQueued = false;
+            _jumpReleased = false;
+        }
+
+        bool OutOfBounds()
+        {
+            Vector2 p = transform.position;
+            return p.x < _boundsMin.x - boundsMargin || p.x > _boundsMax.x + boundsMargin
+                || p.y < _boundsMin.y - boundsMargin || p.y > _boundsMax.y + boundsMargin;
         }
 
         // 정점 높이 h를 내려면 v0 = sqrt(2·g·h). g = |중력.y|·gravityScale.
