@@ -34,6 +34,12 @@ namespace TowardTheStars.Level
         public bool buildOnStart = true;
         public bool frameCamera = true;      // 팔로우 미사용 시 스테이지 전체를 프레이밍(폴백)
 
+        [Header("게임 플로우 (타이틀·일시정지·엔딩)")]
+        public bool useGameFlow = true;      // 켜면 시작 시 GameManager(타이틀→플레이→엔딩) 사용
+        public bool showTitleOnBoot = true;  // 부팅 시 타이틀 표시. 끄면 바로 stage1로 시작
+        public System.Action OnGameComplete; // 마지막 스테이지 클리어 시 GameManager가 엔딩 처리(플로우 사용 시)
+        public bool IsTransitioning => _transitioning;
+
         [Header("플레이테스트 편의 키")]
         public bool restartKey = true;       // R: 현재 스테이지 리셋(막혔을 때 구제)
         public bool debugStageKeys = true;   // 1~4: 해당 스테이지로 즉시 이동. 데모 빌드 시 끌 것
@@ -48,6 +54,10 @@ namespace TowardTheStars.Level
         [Header("카메라")]
         public bool followPlayer = true;     // 플레이어 추적 카메라 사용
         public float cameraViewCells = 16f;  // 화면 세로에 담을 셀 수(줌 정도)
+
+        [Header("게이트 트리거")]
+        // 게이트 통과 판정을 표면(개폐존 셀)에서 레벨 안쪽(통로 방향)으로 이만큼 더 넓힌다(셀 단위).
+        public float gateExitInset = 0.5f;
 
         // 색 팔레트(플레이스홀더)
         static readonly Color C_Terrain  = new(0.35f, 0.26f, 0.18f);
@@ -72,13 +82,14 @@ namespace TowardTheStars.Level
 
         void Start()
         {
+            if (useGameFlow) { GameManager.Bootstrap(this); return; }
             if (buildOnStart) Build();
         }
 
-        // 편의 키 입력. 전환 연출 중에는 무시(_transitioning 가드).
+        // 편의 키 입력. 전환 연출/일시정지/타이틀·엔딩(ControlsLocked) 중에는 무시.
         void Update()
         {
-            if (_transitioning) return;
+            if (_transitioning || Player.PlayerController.ControlsLocked) return;
             var kb = Keyboard.current;
             if (kb == null) return;
 
@@ -148,13 +159,20 @@ namespace TowardTheStars.Level
         int[] EffectiveSpawn(StageData s)
             => (_reverseEntry && s.ExitSpawn != null && s.ExitSpawn.Length >= 2) ? s.ExitSpawn : s.Spawn;
 
-        // 게이트 통과 시 호출: 다음 스테이지로 페이드 전환. 마지막이면 처음으로 순환(데모).
+        // 게이트 통과 시 호출: 다음 스테이지로 페이드 전환.
+        // 마지막 스테이지면 → 게임 플로우 사용 시 엔딩(OnGameComplete), 아니면 처음으로 순환(폴백).
         public void GoToNext()
         {
             if (_transitioning) return;
             int idx = System.Array.IndexOf(stageOrder, stageKey);
-            string next = (idx >= 0 && idx + 1 < stageOrder.Length) ? stageOrder[idx + 1] : stageOrder[0];
-            StartCoroutine(Transition(next, false));
+            bool isLast = idx < 0 || idx + 1 >= stageOrder.Length;
+            if (isLast)
+            {
+                if (OnGameComplete != null) { OnGameComplete.Invoke(); return; }   // 엔딩
+                StartCoroutine(Transition(stageOrder[0], false));                  // 폴백: 순환
+                return;
+            }
+            StartCoroutine(Transition(stageOrder[idx + 1], false));
         }
 
         // 입장 통로 역방향(왼쪽으로 나감) 시 호출: 이전 스테이지로. 첫 스테이지면 이동 없음.
@@ -164,6 +182,15 @@ namespace TowardTheStars.Level
             int idx = System.Array.IndexOf(stageOrder, stageKey);
             if (idx <= 0) return;
             StartCoroutine(Transition(stageOrder[idx - 1], true));
+        }
+
+        // 타이틀에서 게임 시작: 첫 스테이지(stageOrder[0])부터 즉시 빌드. GameManager가 호출.
+        public void StartGame()
+        {
+            if (_transitioning) return;
+            _reverseEntry = false;
+            if (stageOrder != null && stageOrder.Length > 0) stageKey = stageOrder[0];
+            Build();
         }
 
         // R키: 현재 스테이지를 처음 상태로 재구축(거울 각도·플레이어 위치 초기화). 퍼즐이 꼬였을 때 구제용.
@@ -352,12 +379,31 @@ namespace TowardTheStars.Level
                 minX = Mathf.Min(minX, c[0]); maxX = Mathf.Max(maxX, c[0]);
                 minY = Mathf.Min(minY, c[1]); maxY = Mathf.Max(maxY, c[1]);
             }
+            // 개폐존 셀들의 바깥 가장자리(월드 경계).
+            float left = minX - 0.5f, right = maxX + 0.5f, bottom = minY - 0.5f, top = maxY + 0.5f;
+
+            // 얇은 축(=통로 방향)을 레벨 안쪽(그리드 중심 쪽)으로 inset 만큼 확장.
+            //   세로문 → 가로로, 바닥 해치 → 세로로 넓어진다. 표면에 붙기 전부터/붙은 채로도 판정.
+            float inset = Mathf.Max(0f, gateExitInset);
+            if (inset > 0f && s.Grid != null)
+            {
+                float cx = (s.Grid.W - 1) * 0.5f, cy = (s.Grid.H - 1) * 0.5f;   // 그리드 중심
+                if (maxX - minX <= maxY - minY)   // X가 더 얇음 → 통로는 가로 방향
+                {
+                    if (cx < (minX + maxX) * 0.5f) left -= inset; else right += inset;
+                }
+                else                              // Y가 더 얇음 → 통로는 세로 방향(바닥 해치 등)
+                {
+                    if (cy < (minY + maxY) * 0.5f) bottom -= inset; else top += inset;
+                }
+            }
+
             var go = new GameObject("gate_exit");
             go.transform.SetParent(_root, false);
-            go.transform.position = new Vector3((minX + maxX) * 0.5f, (minY + maxY) * 0.5f, 0f);
+            go.transform.position = new Vector3((left + right) * 0.5f, (bottom + top) * 0.5f, 0f);
             var trig = go.AddComponent<BoxCollider2D>();
             trig.isTrigger = true;                                   // 감지 전용(물리 차단 없음)
-            trig.size = new Vector2(maxX - minX + 1f, maxY - minY + 1f);
+            trig.size = new Vector2(right - left, top - bottom);
             go.AddComponent<GateExit>().Init(det, this, +1);   // 게이트 통과 → 다음 스테이지
         }
 

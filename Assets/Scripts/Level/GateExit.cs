@@ -20,7 +20,13 @@ namespace TowardTheStars.Level
             _dir = dir;
         }
 
-        void OnTriggerEnter2D(Collider2D other)
+        // 진입 순간(Enter)뿐 아니라 머무는 동안(Stay)에도 판정 —
+        //   문에 붙어 있는 상태에서 게이트가 열려도(재진입 없이도) 통과되게 한다.
+        //   재진입/중복 호출은 GoToNext/GoToPrev의 _transitioning 가드가 막는다.
+        void OnTriggerEnter2D(Collider2D other) => TryPass(other);
+        void OnTriggerStay2D(Collider2D other) => TryPass(other);
+
+        void TryPass(Collider2D other)
         {
             if (_loader == null) return;
             if (_gate != null && !_gate.IsOpen) return;   // 게이트가 있으면 개방 상태에서만 통과
