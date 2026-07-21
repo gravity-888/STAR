@@ -57,7 +57,9 @@ namespace TowardTheStars.Player
             if (m == null) return;
 
             var vis = m.transform.Find("visual");
-            if (vis != null && vis.TryGetComponent(out SpriteRenderer sr))
+            // 색 사각형이면 자기 자신, 프리팹 아트면 하위 첫 SpriteRenderer를 하이라이트.
+            var sr = vis != null ? vis.GetComponentInChildren<SpriteRenderer>() : null;
+            if (sr != null)
             {
                 _selSprite = sr;
                 _selBaseColor = sr.color;

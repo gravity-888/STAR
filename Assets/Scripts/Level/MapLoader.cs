@@ -75,6 +75,26 @@ namespace TowardTheStars.Level
         static readonly Color C_Spawn    = new(1.00f, 1.00f, 1.00f);
         static readonly Color C_Player   = new(1.00f, 0.45f, 0.15f);
 
+        // 프리팹 seam: 오브젝트별 시각 프리팹 슬롯. 비우면 위 색 사각형으로 폴백(동작 동일).
+        //   프리팹은 각 오브젝트의 "visual" 자식(=아트)만 대체 — 콜라이더·로직은 루트에 그대로.
+        //   임시/최종 아트는 이 슬롯만 채우면 되고 코드 변경이 없어야 한다(로드맵 3·7).
+        [Header("프리팹 슬롯 (비우면 색 사각형 폴백)")]
+        public GameObject terrainPrefab;
+        public GameObject wallPrefab;
+        public GameObject wallGlassPrefab;       // 빛 통과 예외 벽(반투명)
+        public GameObject platformPrefab;        // 빛 투과 발판
+        public GameObject platformSolidPrefab;   // 빛 차단 발판
+        public GameObject ladderPrefab;
+        public GameObject lensPrefab;
+        public GameObject mirrorPrefab;          // 회전 가능 거울
+        public GameObject mirrorFixedPrefab;     // 고정(회색) 거울 — 별도 아트 가능
+        public GameObject prismPrefab;
+        public GameObject gatePrefab;            // 게이트 수광부
+        public GameObject gateDoorPrefab;        // 게이트 개폐부(문) 셀
+        public GameObject decoyPrefab;
+        public GameObject spawnPrefab;
+        public GameObject playerPrefab;
+
         const int Z_TERRAIN = 0, Z_PLATFORM = 1, Z_OBJECT = 5, Z_SPAWN = 8;
 
         Transform _root;
@@ -244,7 +264,7 @@ namespace TowardTheStars.Level
                 if (!int.TryParse(kv.Key, out int x)) continue;
                 for (int y = 0; y <= kv.Value; y++)
                     // 지형은 밟는 바닥 → 솔리드 콜라이더(플레이어 지지). 빛 차단은 벽이 담당.
-                    SolidDecor($"terrain_{x}_{y}", new Vector2(x, y), C_Terrain, Z_TERRAIN, Vector2.one, Vector2.one);
+                    SolidDecor($"terrain_{x}_{y}", new Vector2(x, y), C_Terrain, Z_TERRAIN, Vector2.one, Vector2.one, terrainPrefab);
             }
         }
 
@@ -269,7 +289,8 @@ namespace TowardTheStars.Level
                 // 벽은 불투명 → 솔리드 콜라이더(빛 차단). IBeamHit 없음 → 빔 정지.
                 var go = SolidRoot($"wall_{c[0]}_{c[1]}", new Vector2(c[0], c[1]), 1.0f);
                 bool passLight = transmit.Contains((c[0], c[1]));
-                Visual(go.transform, passLight ? C_WallGlass : C_Wall, Z_TERRAIN, Vector2.one);
+                Visual(go.transform, passLight ? wallGlassPrefab : wallPrefab,
+                       passLight ? C_WallGlass : C_Wall, Z_TERRAIN, Vector2.one);
                 if (passLight) go.AddComponent<BeamTransparent>();   // 빛만 통과, 플레이어는 막음
             }
         }
@@ -286,7 +307,8 @@ namespace TowardTheStars.Level
                     // transmit=true면 빛 투과(마커 부착), false면 벽처럼 빛을 막는다 — 색으로 구분.
                     var go = SolidDecor($"plat_{p.Id}_{c[0]}_{c[1]}", new Vector2(c[0], c[1]),
                           p.Transmit ? C_Platform : C_PlatformSolid, Z_PLATFORM,
-                          new Vector2(1f, 0.4f), new Vector2(1f, 0.4f));
+                          new Vector2(1f, 0.4f), new Vector2(1f, 0.4f),
+                          p.Transmit ? platformPrefab : platformSolidPrefab);
                     if (p.Transmit) go.AddComponent<BeamTransparent>();
                 }
             }
@@ -309,7 +331,9 @@ namespace TowardTheStars.Level
                 box.size = new Vector2(0.6f, h);
                 box.isTrigger = true;   // 빛 통과 + 플레이어 등반 감지용
                 go.AddComponent<Ladder>().Init(h);
-                Visual(go.transform, C_Ladder, Z_PLATFORM, new Vector2(0.3f, h));
+                // 사다리 높이 h는 데이터 종속 → 프리팹에도 세로 스케일로 전달.
+                Visual(go.transform, ladderPrefab, C_Ladder, Z_PLATFORM, new Vector2(0.3f, h), 0f,
+                       prefabScale: new Vector2(1f, h));
             }
         }
 
@@ -324,8 +348,9 @@ namespace TowardTheStars.Level
             go.transform.position = pos;
             var dir = GridMap.DirToVector(s.Source.Dir);
             go.AddComponent<LightSource>().Init(dir, 1f);
-            Visual(go.transform, C_Lens, Z_OBJECT, Vector2.one * 0.8f);
-            if (dir != Vector2.zero)
+            Visual(go.transform, lensPrefab, C_Lens, Z_OBJECT, Vector2.one * 0.8f);
+            // 방향 표시 점은 플레이스홀더 전용 — 프리팹 아트는 자체적으로 방향을 표현한다고 보고 생략.
+            if (dir != Vector2.zero && lensPrefab == null)
                 Decor("lens_dir", pos + dir * 0.6f, C_Lens, Z_SPAWN, Vector2.one * 0.25f);
         }
 
@@ -337,7 +362,9 @@ namespace TowardTheStars.Level
                 if (m.Pos == null) continue;
                 var go = SolidRoot($"mirror_{m.Id}", new Vector2(m.Pos[0], m.Pos[1]), 0.9f);
                 var col = m.Fixed ? C_MirrorFix : C_Mirror;
-                Visual(go.transform, col, Z_OBJECT, new Vector2(1.1f, 0.18f), -m.AngleDeg);
+                var mp = m.Fixed ? mirrorFixedPrefab : mirrorPrefab;
+                // 거울 각도는 물리적 반사면 → 프리팹 아트도 -angle 로 회전시켜 정렬.
+                Visual(go.transform, mp, col, Z_OBJECT, new Vector2(1.1f, 0.18f), -m.AngleDeg, prefabRotZ: -m.AngleDeg);
                 go.AddComponent<Mirror>().Init(m.AngleDeg, m.Fixed);   // 변수 주입
             }
         }
@@ -346,7 +373,8 @@ namespace TowardTheStars.Level
         {
             if (s.Prism?.Pos == null) return;
             var go = SolidRoot("prism", new Vector2(s.Prism.Pos[0], s.Prism.Pos[1]), 0.9f);
-            Visual(go.transform, C_Prism, Z_OBJECT, Vector2.one * 0.9f, 45f);
+            // 45°는 마름모꼴 플레이스홀더 전용 — 프리팹 아트는 정립(prefabRotZ 기본 0).
+            Visual(go.transform, prismPrefab, C_Prism, Z_OBJECT, Vector2.one * 0.9f, 45f);
             var outs = new List<Vector2>();
             if (s.Prism.Out != null)
                 foreach (var arrow in s.Prism.Out) outs.Add(GridMap.DirToVector(arrow));
@@ -357,7 +385,7 @@ namespace TowardTheStars.Level
         {
             if (s.Gate?.Pos == null) return;
             var go = SolidRoot("gate", new Vector2(s.Gate.Pos[0], s.Gate.Pos[1]), 0.9f);
-            var sr = Visual(go.transform, C_Gate, Z_OBJECT, new Vector2(0.9f, 0.9f));
+            var sr = Visual(go.transform, gatePrefab, C_Gate, Z_OBJECT, new Vector2(0.9f, 0.9f));
             var det = go.AddComponent<GateDetector>();
             det.visual = sr;
             det.CacheClosedColor();
@@ -443,7 +471,7 @@ namespace TowardTheStars.Level
                 cell.transform.position = new Vector3(c[0], c[1], 0f);
                 var col = cell.AddComponent<BoxCollider2D>();
                 col.size = Vector2.one;
-                var sr = Visual(cell.transform, door.closedColor, Z_OBJECT, new Vector2(0.9f, 0.9f));
+                var sr = Visual(cell.transform, gateDoorPrefab, door.closedColor, Z_OBJECT, new Vector2(0.9f, 0.9f));
                 door.Register(col, sr);
             }
 
@@ -456,14 +484,14 @@ namespace TowardTheStars.Level
             if (s.Decoys == null) return;
             foreach (var d in s.Decoys)
                 if (d.Pos != null)
-                    Decor($"decoy_{d.Id}", new Vector2(d.Pos[0], d.Pos[1]), C_Decoy, Z_OBJECT, Vector2.one * 0.8f, 45f);
+                    Decor($"decoy_{d.Id}", new Vector2(d.Pos[0], d.Pos[1]), C_Decoy, Z_OBJECT, Vector2.one * 0.8f, 45f, decoyPrefab);
         }
 
         void BuildSpawn(StageData s)
         {
             var sp = EffectiveSpawn(s);
             if (sp == null || sp.Length < 2) return;
-            Decor("spawn", new Vector2(sp[0], sp[1]), C_Spawn, Z_SPAWN, Vector2.one * 0.6f);
+            Decor("spawn", new Vector2(sp[0], sp[1]), C_Spawn, Z_SPAWN, Vector2.one * 0.6f, 0f, spawnPrefab);
         }
 
         // 스폰 지점에 플레이어 액터 배치(Rigidbody2D + 콜라이더 + PlayerController). 카메라 추적용 Transform 반환.
@@ -490,7 +518,7 @@ namespace TowardTheStars.Level
                 pc.SetRespawn(pos, new Vector2(-0.5f, -0.5f), new Vector2(s.Grid.W - 0.5f, s.Grid.H - 0.5f));
             go.AddComponent<MirrorInteractor>();   // Phase 4: Q/E로 가까운 거울 회전 + 빛 재추적
 
-            Visual(go.transform, C_Player, Z_SPAWN + 1, new Vector2(0.6f, 0.9f));
+            Visual(go.transform, playerPrefab, C_Player, Z_SPAWN + 1, new Vector2(0.6f, 0.9f));
             return go.transform;
         }
 
@@ -507,20 +535,20 @@ namespace TowardTheStars.Level
         }
 
         // 시각 + 솔리드(트리거 아님) BoxCollider2D. 플레이어가 밟고 설 수 있는 지형/발판용.
-        GameObject SolidDecor(string name, Vector2 pos, Color col, int order, Vector2 scale, Vector2 colliderSize)
+        GameObject SolidDecor(string name, Vector2 pos, Color col, int order, Vector2 scale, Vector2 colliderSize, GameObject prefab = null)
         {
-            var go = Decor(name, pos, col, order, scale);
+            var go = Decor(name, pos, col, order, scale, 0f, prefab);
             go.AddComponent<BoxCollider2D>().size = colliderSize;
             return go;
         }
 
         // 콜라이더 없는 순수 시각 오브젝트.
-        GameObject Decor(string name, Vector2 pos, Color col, int order, Vector2 scale, float rotZ = 0f)
+        GameObject Decor(string name, Vector2 pos, Color col, int order, Vector2 scale, float rotZ = 0f, GameObject prefab = null)
         {
             var go = new GameObject(name);
             go.transform.SetParent(_root, false);
             go.transform.position = new Vector3(pos.x, pos.y, 0f);
-            Visual(go.transform, col, order, scale, rotZ);
+            Visual(go.transform, prefab, col, order, scale, rotZ);
             return go;
         }
 
@@ -537,6 +565,31 @@ namespace TowardTheStars.Level
             sr.color = col;
             sr.sortingOrder = order;
             return sr;
+        }
+
+        // 프리팹 seam: prefab이 있으면 "visual" 자식으로 인스턴스화, 없으면 색 사각형으로 폴백(위 오버로드=기존 동작).
+        //   prefabRotZ  : 프리팹에도 적용할 회전(거울 각도 등). 기본 0(색 사각형만 rotZ로 회전).
+        //   prefabScale : 프리팹에 적용할 스케일(사다리 높이 등). null이면 프리팹 원본 크기 유지.
+        //   반환        : 색 폴백이면 그 SpriteRenderer, 프리팹이면 첫 SpriteRenderer(없으면 null) — 게이트 색 피드백 호환.
+        SpriteRenderer Visual(Transform parent, GameObject prefab, Color col, int order, Vector2 scale, float rotZ = 0f,
+                              float prefabRotZ = 0f, Vector2? prefabScale = null)
+        {
+            if (prefab == null) return Visual(parent, col, order, scale, rotZ);
+
+            var go = Instantiate(prefab, parent, false);
+            go.name = "visual";
+            go.transform.localPosition = Vector3.zero;
+            go.transform.localRotation = Quaternion.Euler(0f, 0f, prefabRotZ);
+            if (prefabScale.HasValue)
+                go.transform.localScale = new Vector3(prefabScale.Value.x, prefabScale.Value.y, 1f);
+
+            SpriteRenderer first = null;
+            foreach (var sr in go.GetComponentsInChildren<SpriteRenderer>(true))
+            {
+                sr.sortingOrder = order + sr.sortingOrder;   // 그룹 기준 order + 프리팹 내부 상대순서 보존
+                if (first == null) first = sr;
+            }
+            return first;
         }
 
         // 플레이어가 있으면 추적 카메라, 아니면(또는 followPlayer=false) 전체 프레이밍.
