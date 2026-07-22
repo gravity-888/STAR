@@ -482,9 +482,10 @@ namespace TowardTheStars.Level
             block.transform.position = new Vector3((minX + maxX) * 0.5f, (minY + maxY) * 0.5f, 0f);
             var box = block.AddComponent<BoxCollider2D>();
             box.size = new Vector2(w, h);   // 닫히면 통로 전체를 막는 장벽(열리면 비활성)
-            // 색 사각형은 존 크기(살짝 인셋), 프리팹은 존 크기로 스케일(사다리처럼 늘어남 → 세로/가로 타일러블 권장).
-            var sr = Visual(block.transform, gateDoorPrefab, door.closedColor, Z_OBJECT,
-                            new Vector2(w - 0.1f, h - 0.1f), 0f, prefabScale: new Vector2(w, h));
+            // 프리팹은 "긴 하나의 아트"를 존(w×h)에 정확히 맞춤(가로형은 90° 회전). 비면 색 사각형(존 크기, 살짝 인셋).
+            SpriteRenderer sr = gateDoorPrefab != null
+                ? InstantiateGateDoor(block.transform, gateDoorPrefab, Z_OBJECT, w, h)
+                : Visual(block.transform, door.closedColor, Z_OBJECT, new Vector2(w - 0.1f, h - 0.1f));
             door.Register(box, sr);
 
             door.SetOpen(false);                 // 기본 닫힘(막힘)
@@ -595,6 +596,36 @@ namespace TowardTheStars.Level
         {
             if (prefab == null) return;
             InstantiatePrefab(parent, prefab, childName, order, 0f, null);
+        }
+
+        // 게이트 문 전용: "긴 하나의 아트"를 원본 크기와 무관하게 개폐존(w×h)에 정확히 맞춘다.
+        //   세로로 긴 존 → 그대로 맞춤. 가로로 긴 존(바닥 해치) → 세로 아트를 90° 눕혀 맞춤(같은 아트 재사용).
+        SpriteRenderer InstantiateGateDoor(Transform parent, GameObject prefab, int order, float w, float h)
+        {
+            var go = Instantiate(prefab, parent, false);
+            go.name = "visual";
+            go.transform.localPosition = Vector3.zero;
+
+            SpriteRenderer first = null;
+            foreach (var sr in go.GetComponentsInChildren<SpriteRenderer>(true))
+            {
+                sr.sortingOrder = order + sr.sortingOrder;
+                if (first == null) first = sr;
+            }
+            var nat = (first != null && first.sprite != null) ? first.sprite.bounds.size : Vector3.one;
+            float nx = Mathf.Max(nat.x, 0.0001f), ny = Mathf.Max(nat.y, 0.0001f);
+
+            if (w > h)   // 가로로 긴 존(바닥 해치) → 90° 눕혀 맞춤
+            {
+                go.transform.localRotation = Quaternion.Euler(0f, 0f, 90f);
+                go.transform.localScale = new Vector3(h / nx, w / ny, 1f);
+            }
+            else         // 세로로 긴 존(일반 문) → 그대로 맞춤
+            {
+                go.transform.localRotation = Quaternion.identity;
+                go.transform.localScale = new Vector3(w / nx, h / ny, 1f);
+            }
+            return first;
         }
 
         // 프리팹을 지정 이름의 자식으로 인스턴스화(위치=부모 원점). sortingOrder=기준+내부 상대순서. 첫 SpriteRenderer 반환.
