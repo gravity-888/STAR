@@ -148,7 +148,7 @@ Assets/Scripts/
 |---|---|---|
 | 1 ✅ | **엔딩 + 최소 UI** | ~~stage4 클리어 시 순환 대신 엔딩 처리·타이틀·일시정지~~ **완료(2026-07-22)**: [`GameManager`](Assets/Scripts/Level/GameManager.cs)가 타이틀→플레이→엔딩→타이틀 관리. [`MapLoader.GoToNext`](Assets/Scripts/Level/MapLoader.cs)는 마지막 스테이지에서 `OnGameComplete`(엔딩) 호출. 스테이지 HUD·진행저장은 사용자 결정으로 제외 |
 | 2 ✅ | **프리팹 seam 구축** | **완료(2026-07-22)**: [`MapLoader`](Assets/Scripts/Level/MapLoader.cs)에 오브젝트별 프리팹 슬롯 15종(지형·벽·발판·사다리·랜즈·거울·고정거울·프리즘·게이트·문·디코이·스폰·플레이어…). 프리팹은 각 오브젝트의 `"visual"` 자식만 대체(콜라이더·로직은 루트 유지). **비면 색 사각형으로 폴백** — 3·7번은 슬롯만 채우면 코드 변경 0. seam 계약은 아래 §10 참고 |
-| 3 | **임시 아트 + 임시 오디오** | **최종 아트의 크기·애니메이션 스펙은 그대로 두고 그림 퀄리티만 낮춘 버전.** 슬롯 채우기로만 끝나야 함(코드 변경 0) |
+| 3 🔄 | **임시 아트 + 임시 오디오** | **진행 중**: 규격서 [`Assets/Art/PREFAB_SPEC.md`](Assets/Art/PREFAB_SPEC.md) + 폴더 골격(`Assets/Art/Sprites`·`Prefabs`) 준비 완료. **아트 제작은 사용자 직접**(2026-07-22 결정) — 규격대로 프리팹 만들어 슬롯에 드래그하면 코드 변경 0. **오디오는 이 단계에서 제외**(코드 seam 없음 → 별도 단계로 미룸). 최종 아트의 크기·애니 스펙은 그대로 두고 그림 퀄만 낮춘 버전 |
 | 4 | **실기 빌드 1회 확인** | 스탠드얼론 빌드로 stage4 프레이밍 검증 |
 | 5 | **플레이어 메트릭 확정** | `moveSpeed 6`/`climbSpeed 5`/점프 파라미터를 임시값에서 확정값으로 |
 | 6 | **밸런싱** | 거울 경로·맵 길이·구간 추가. 맵 검증기 있으면 유리 |
@@ -196,6 +196,8 @@ Assets/Scripts/
 - **게이트/문 색 피드백**: 게이트 수광부·개폐부는 열림/닫힘 시 `visual`의 **첫 SpriteRenderer 색을 코드가 바꾼다**(초록/반투명). 색으로 상태를 보이려면 루트에 대표 SpriteRenderer를 두거나, 그 방식이 싫으면 애니메이터/자식 스크립트로 대체(그 경우 색 틴트는 무시됨 — null-safe).
 - **랜즈 방향 점**: `lensPrefab`을 넣으면 플레이스홀더 방향 표시 점은 자동 생략(프리팹이 방향을 표현한다고 가정).
 
-**슬롯 목록**: `terrainPrefab` · `wallPrefab` · `wallGlassPrefab`(빛 통과 벽) · `platformPrefab`(투과 발판) · `platformSolidPrefab`(차단 발판) · `ladderPrefab` · `lensPrefab` · `mirrorPrefab` · `mirrorFixedPrefab`(고정 거울) · `prismPrefab` · `gatePrefab` · `gateDoorPrefab` · `decoyPrefab` · `spawnPrefab` · `playerPrefab`.
+**슬롯 목록(17종)**: `terrainPrefab` · `wallPrefab` · `wallGlassPrefab`(빛 통과 벽) · `platformPrefab`(투과 발판) · `platformSolidPrefab`(차단 발판) · `ladderPrefab` · `lensPrefab`(랜즈) · `torchPrefab`(랜즈 거치 횃불) · `mirrorPrefab`(회전 반사면) · `mirrorFixedPrefab`(고정 거울) · `mirrorMountPrefab`(거울 거치대) · `prismPrefab` · `gatePrefab`(수광부) · `gateDoorPrefab`(문) · `decoyPrefab` · `spawnPrefab` · `playerPrefab`.
+
+**2조각으로 나뉜 것**: 랜즈=`lensPrefab`+`torchPrefab`(둘 다 랜즈 위치 중심, 횃불은 회전X 배경). 거울=`mirrorPrefab`(코드가 −angle 회전)+`mirrorMountPrefab`(거치대, 회전X 배경). **게이트 문**은 개폐존 셀별이 아니라 **존 전체를 덮는 긴 블럭 1개**(콜라이더·시각 각 1개, 프리팹은 존 크기로 스케일). 수광부(`gatePrefab`)는 문과 **별개 위치의 오브젝트**.
 
 > ⚠️ 슬롯은 씬의 MapLoader 컴포넌트에 직렬화된다 → 프리팹을 드래그해 넣은 뒤 **씬을 저장·커밋**해야 다른 PC에도 반영된다.

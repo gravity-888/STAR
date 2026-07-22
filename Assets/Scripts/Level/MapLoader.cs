@@ -85,12 +85,14 @@ namespace TowardTheStars.Level
         public GameObject platformPrefab;        // 빛 투과 발판
         public GameObject platformSolidPrefab;   // 빛 차단 발판
         public GameObject ladderPrefab;
-        public GameObject lensPrefab;
-        public GameObject mirrorPrefab;          // 회전 가능 거울
+        public GameObject lensPrefab;            // 랜즈(빛나는 부분)
+        public GameObject torchPrefab;           // 랜즈를 장착하는 횃불(고정 배경, 회전 안 함)
+        public GameObject mirrorPrefab;          // 회전 가능 거울(돌아가는 반사면)
         public GameObject mirrorFixedPrefab;     // 고정(회색) 거울 — 별도 아트 가능
+        public GameObject mirrorMountPrefab;     // 거울 거치대(고정, 회전 안 함) — 거울을 잡아주는 부분
         public GameObject prismPrefab;
-        public GameObject gatePrefab;            // 게이트 수광부
-        public GameObject gateDoorPrefab;        // 게이트 개폐부(문) 셀
+        public GameObject gatePrefab;            // 게이트 수광부(별도 오브젝트)
+        public GameObject gateDoorPrefab;        // 게이트 개폐부(문) — 개폐존 전체를 덮는 긴 블럭 1개
         public GameObject decoyPrefab;
         public GameObject spawnPrefab;
         public GameObject playerPrefab;
@@ -348,6 +350,7 @@ namespace TowardTheStars.Level
             go.transform.position = pos;
             var dir = GridMap.DirToVector(s.Source.Dir);
             go.AddComponent<LightSource>().Init(dir, 1f);
+            PrefabChild(go.transform, torchPrefab, "torch", Z_OBJECT - 1);   // 랜즈를 장착한 횃불(배경, 회전 안 함)
             Visual(go.transform, lensPrefab, C_Lens, Z_OBJECT, Vector2.one * 0.8f);
             // 방향 표시 점은 플레이스홀더 전용 — 프리팹 아트는 자체적으로 방향을 표현한다고 보고 생략.
             if (dir != Vector2.zero && lensPrefab == null)
@@ -363,7 +366,9 @@ namespace TowardTheStars.Level
                 var go = SolidRoot($"mirror_{m.Id}", new Vector2(m.Pos[0], m.Pos[1]), 0.9f);
                 var col = m.Fixed ? C_MirrorFix : C_Mirror;
                 var mp = m.Fixed ? mirrorFixedPrefab : mirrorPrefab;
-                // 거울 각도는 물리적 반사면 → 프리팹 아트도 -angle 로 회전시켜 정렬.
+                // 거치대(고정) — 회전하지 않는 배경 부속. 거울(반사면)만 -angle 회전.
+                PrefabChild(go.transform, mirrorMountPrefab, "mount", Z_OBJECT - 1);
+                // 거울 각도는 물리적 반사면 → "visual" 자식(=거울)을 -angle 로 회전(런타임 회전은 Mirror가 담당).
                 Visual(go.transform, mp, col, Z_OBJECT, new Vector2(1.1f, 0.18f), -m.AngleDeg, prefabRotZ: -m.AngleDeg);
                 go.AddComponent<Mirror>().Init(m.AngleDeg, m.Fixed);   // 변수 주입
             }
@@ -462,18 +467,25 @@ namespace TowardTheStars.Level
             doorGo.transform.SetParent(_root, false);
             var door = doorGo.AddComponent<GateDoor>();
 
+            // 개폐존(연속된 칸들)을 하나의 긴 블럭으로 묶는다: 콜라이더 1개 + 시각 1개.
+            float minX = float.MaxValue, minY = float.MaxValue, maxX = float.MinValue, maxY = float.MinValue;
             foreach (var c in s.GateOpenZone)
             {
                 if (c == null || c.Length < 2) continue;
-                // 셀마다 솔리드 콜라이더(1x1) — 닫히면 플레이어·빛을 막는 장벽.
-                var cell = new GameObject($"door_{c[0]}_{c[1]}");
-                cell.transform.SetParent(doorGo.transform, false);
-                cell.transform.position = new Vector3(c[0], c[1], 0f);
-                var col = cell.AddComponent<BoxCollider2D>();
-                col.size = Vector2.one;
-                var sr = Visual(cell.transform, gateDoorPrefab, door.closedColor, Z_OBJECT, new Vector2(0.9f, 0.9f));
-                door.Register(col, sr);
+                minX = Mathf.Min(minX, c[0]); maxX = Mathf.Max(maxX, c[0]);
+                minY = Mathf.Min(minY, c[1]); maxY = Mathf.Max(maxY, c[1]);
             }
+            float w = maxX - minX + 1f, h = maxY - minY + 1f;
+
+            var block = new GameObject("door_block");
+            block.transform.SetParent(doorGo.transform, false);
+            block.transform.position = new Vector3((minX + maxX) * 0.5f, (minY + maxY) * 0.5f, 0f);
+            var box = block.AddComponent<BoxCollider2D>();
+            box.size = new Vector2(w, h);   // 닫히면 통로 전체를 막는 장벽(열리면 비활성)
+            // 색 사각형은 존 크기(살짝 인셋), 프리팹은 존 크기로 스케일(사다리처럼 늘어남 → 세로/가로 타일러블 권장).
+            var sr = Visual(block.transform, gateDoorPrefab, door.closedColor, Z_OBJECT,
+                            new Vector2(w - 0.1f, h - 0.1f), 0f, prefabScale: new Vector2(w, h));
+            door.Register(box, sr);
 
             door.SetOpen(false);                 // 기본 닫힘(막힘)
             det.OnStateChanged += door.SetOpen;  // 광량 임계 통과 시 즉시 여닫이
@@ -575,13 +587,25 @@ namespace TowardTheStars.Level
                               float prefabRotZ = 0f, Vector2? prefabScale = null)
         {
             if (prefab == null) return Visual(parent, col, order, scale, rotZ);
+            return InstantiatePrefab(parent, prefab, "visual", order, prefabRotZ, prefabScale);
+        }
 
+        // 회전·색 폴백이 필요 없는 부속 프리팹(거울 거치대·횃불 등)을 이름 붙인 자식으로 배치. 비면 아무것도 안 함.
+        void PrefabChild(Transform parent, GameObject prefab, string childName, int order)
+        {
+            if (prefab == null) return;
+            InstantiatePrefab(parent, prefab, childName, order, 0f, null);
+        }
+
+        // 프리팹을 지정 이름의 자식으로 인스턴스화(위치=부모 원점). sortingOrder=기준+내부 상대순서. 첫 SpriteRenderer 반환.
+        SpriteRenderer InstantiatePrefab(Transform parent, GameObject prefab, string childName, int order, float rotZ, Vector2? scale)
+        {
             var go = Instantiate(prefab, parent, false);
-            go.name = "visual";
+            go.name = childName;
             go.transform.localPosition = Vector3.zero;
-            go.transform.localRotation = Quaternion.Euler(0f, 0f, prefabRotZ);
-            if (prefabScale.HasValue)
-                go.transform.localScale = new Vector3(prefabScale.Value.x, prefabScale.Value.y, 1f);
+            go.transform.localRotation = Quaternion.Euler(0f, 0f, rotZ);
+            if (scale.HasValue)
+                go.transform.localScale = new Vector3(scale.Value.x, scale.Value.y, 1f);
 
             SpriteRenderer first = null;
             foreach (var sr in go.GetComponentsInChildren<SpriteRenderer>(true))

@@ -2576,6 +2576,7 @@ MonoBehaviour:
   fallGravityMultiplier: 1.8
   groundCheckDist: 0.08
   coyoteTime: 0.07
+  boundsMargin: 4
 --- !u!50 &394302524
 Rigidbody2D:
   serializedVersion: 5
@@ -7113,8 +7114,28 @@ MonoBehaviour:
   - stage4
   buildOnStart: 1
   frameCamera: 1
+  useGameFlow: 1
+  showTitleOnBoot: 1
+  restartKey: 1
+  debugStageKeys: 1
   followPlayer: 1
   cameraViewCells: 16
+  gateExitInset: -0.5
+  terrainPrefab: {fileID: 0}
+  wallPrefab: {fileID: 0}
+  wallGlassPrefab: {fileID: 0}
+  platformPrefab: {fileID: 0}
+  platformSolidPrefab: {fileID: 0}
+  ladderPrefab: {fileID: 0}
+  lensPrefab: {fileID: 0}
+  mirrorPrefab: {fileID: 0}
+  mirrorFixedPrefab: {fileID: 0}
+  prismPrefab: {fileID: 0}
+  gatePrefab: {fileID: 0}
+  gateDoorPrefab: {fileID: 0}
+  decoyPrefab: {fileID: 0}
+  spawnPrefab: {fileID: 0}
+  playerPrefab: {fileID: 0}
 --- !u!4 &1041966761
 Transform:
   m_ObjectHideFlags: 0
