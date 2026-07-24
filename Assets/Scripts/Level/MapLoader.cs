@@ -104,6 +104,13 @@ namespace TowardTheStars.Level
 
         const int Z_TERRAIN = 0, Z_PLATFORM = 1, Z_OBJECT = 5, Z_SPAWN = 8;
 
+        // 발판 기하: 두께 0.4, 윗면을 칸 위 모서리(y+0.5)에 맞춘다 → 지형(1×1 블록)과 서는 높이가 같아진다.
+        //   중심은 칸에서 (0.5 - 0.4/2) = 0.3칸 위. 빔은 칸 중심선을 지나지만 빛 차단 발판은
+        //   stage3의 세로 낙하 빔 1건뿐이고 그 경로는 여전히 관통하므로 광학 판정에 영향 없음.
+        const float PLATFORM_THICK = 0.4f;
+        const float PLATFORM_TOP   = 0.5f;                                   // 칸 중심 기준 윗면 높이
+        const float PLATFORM_CY    = PLATFORM_TOP - PLATFORM_THICK * 0.5f;   // 칸 중심 기준 발판 중심(=0.3)
+
         Transform _root;
         static Sprite _square;
 
@@ -311,11 +318,11 @@ namespace TowardTheStars.Level
                 if (p.Missing || p.Cells == null) continue;   // stage4 미설계 발판 스킵 [갭]
                 foreach (var c in p.Cells)
                 {
-                    // 발판은 밟고 서는 표면 → 얇은(0.4) 솔리드 콜라이더.
+                    // 발판은 밟고 서는 표면 → 얇은(0.4) 솔리드 콜라이더. 윗면은 지형과 같은 높이(칸 위 모서리).
                     // transmit=true면 빛 투과(마커 부착), false면 벽처럼 빛을 막는다 — 색으로 구분.
-                    var go = SolidDecor($"plat_{p.Id}_{c[0]}_{c[1]}", new Vector2(c[0], c[1]),
+                    var go = SolidDecor($"plat_{p.Id}_{c[0]}_{c[1]}", new Vector2(c[0], c[1] + PLATFORM_CY),
                           p.Transmit ? C_Platform : C_PlatformSolid, Z_PLATFORM,
-                          new Vector2(1f, 0.4f), new Vector2(1f, 0.4f),
+                          new Vector2(1f, PLATFORM_THICK), new Vector2(1f, PLATFORM_THICK),
                           p.Transmit ? platformPrefab : platformSolidPrefab, fitToScale: true);   // 가로 1칸 딱 맞춤 → 옆 칸과 연결
                     if (p.Transmit) go.AddComponent<BeamTransparent>();
                 }
@@ -610,7 +617,7 @@ namespace TowardTheStars.Level
         }
 
         // 지정 칸(col)에서 y보다 아래에 있는 가장 높은 지지면의 윗면 y를 구한다. 없으면 NaN.
-        //   지형은 0..t칸을 채우므로 윗면 = t+0.5, 발판은 두께 0.4라 윗면 = cy+0.2.
+        //   지형은 0..t칸을 채우므로 윗면 = t+0.5, 발판도 윗면을 칸 위 모서리에 맞추므로 = cy+0.5.
         float SurfaceBelow(StageData s, int col, float y)
         {
             float best = float.NegativeInfinity;
@@ -628,7 +635,7 @@ namespace TowardTheStars.Level
                     foreach (var c in p.Cells)
                     {
                         if (c == null || c.Length < 2 || c[0] != col) continue;
-                        float top = c[1] + 0.2f;
+                        float top = c[1] + PLATFORM_TOP;
                         if (top < y) best = Mathf.Max(best, top);
                     }
                 }
