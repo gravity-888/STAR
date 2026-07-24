@@ -199,8 +199,8 @@ Assets/Scripts/
 - **게이트/문 색 피드백**: 게이트 수광부·개폐부는 열림/닫힘 시 `visual`의 **첫 SpriteRenderer 색을 코드가 바꾼다**(초록/반투명). 색으로 상태를 보이려면 루트에 대표 SpriteRenderer를 두거나, 그 방식이 싫으면 애니메이터/자식 스크립트로 대체(그 경우 색 틴트는 무시됨 — null-safe).
 - **랜즈 방향 점**: `lensPrefab`을 넣으면 플레이스홀더 방향 표시 점은 자동 생략(프리팹이 방향을 표현한다고 가정).
 
-**슬롯 목록(17종)**: `terrainPrefab` · `wallPrefab` · `wallGlassPrefab`(빛 통과 벽) · `platformPrefab`(투과 발판) · `platformSolidPrefab`(차단 발판) · `ladderPrefab` · `lensPrefab`(랜즈) · `torchPrefab`(랜즈 거치 횃불) · `mirrorPrefab`(회전 반사면) · `mirrorFixedPrefab`(고정 거울) · `mirrorMountPrefab`(거울 거치대) · `prismPrefab` · `gatePrefab`(수광부) · `gateDoorPrefab`(문) · `decoyPrefab` · `spawnPrefab` · `playerPrefab`.
+**슬롯 목록(16종)**: `terrainPrefab` · `wallPrefab` · `wallGlassPrefab`(빛 통과 벽) · `platformPrefab`(투과 발판) · `platformSolidPrefab`(차단 발판) · `ladderPrefab` · `lensPrefab`(랜즈) · `torchPrefab`(랜즈 거치 횃불) · `mirrorPrefab`(회전 반사면) · `mirrorFixedPrefab`(고정 거울) · `prismPrefab` · `gatePrefab`(수광부) · `gateDoorPrefab`(문) · `decoyPrefab` · `spawnPrefab` · `playerPrefab`.
 
-**2조각으로 나뉜 것**: 랜즈=`lensPrefab`+`torchPrefab`(둘 다 랜즈 위치 중심, 횃불은 회전X 배경). 거울=`mirrorPrefab`(코드가 −angle 회전)+`mirrorMountPrefab`(거치대, 회전X 배경). **게이트 문**은 개폐존 셀별이 아니라 **존 전체를 덮는 긴 블럭 1개**(콜라이더·시각 각 1개, 프리팹은 존 크기로 스케일). 수광부(`gatePrefab`)는 문과 **별개 위치의 오브젝트**.
+**구조 메모**: 랜즈=`lensPrefab`+`torchPrefab`(랜즈는 위치 중심, 횃불은 바닥에 세움·회전X). 거울=`mirrorPrefab` 하나(코드가 회전; 아트 기본각 보정 `mirrorArtAngleOffset`=90, 시작각 ±45° 랜덤). **게이트 문**은 개폐존 전체를 덮는 **긴 블럭 1개**(열리면 위로 슬라이드). 수광부(`gatePrefab`)는 문과 **별개 위치의 오브젝트**.
 
 > ⚠️ 슬롯은 씬의 MapLoader 컴포넌트에 직렬화된다 → 프리팹을 드래그해 넣은 뒤 **씬을 저장·커밋**해야 다른 PC에도 반영된다.

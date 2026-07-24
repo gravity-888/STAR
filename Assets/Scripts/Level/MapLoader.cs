@@ -102,7 +102,6 @@ namespace TowardTheStars.Level
         public GameObject torchPrefab;           // 랜즈를 장착하는 횃불(고정 배경, 회전 안 함)
         public GameObject mirrorPrefab;          // 회전 가능 거울(돌아가는 반사면)
         public GameObject mirrorFixedPrefab;     // 고정(회색) 거울 — 별도 아트 가능
-        public GameObject mirrorMountPrefab;     // 거울 거치대(고정, 회전 안 함) — 거울을 잡아주는 부분
         public GameObject prismPrefab;
         public GameObject gatePrefab;            // 게이트 수광부(별도 오브젝트)
         public GameObject gateDoorPrefab;        // 게이트 개폐부(문) — 개폐존 전체를 덮는 긴 블럭 1개
@@ -395,9 +394,6 @@ namespace TowardTheStars.Level
                 var go = SolidRoot($"mirror_{m.Id}", new Vector2(m.Pos[0], m.Pos[1]), 0.9f);
                 var col = m.Fixed ? C_MirrorFix : C_Mirror;
                 var mp = m.Fixed ? mirrorFixedPrefab : mirrorPrefab;
-                // 거치대(고정) — 회전하지 않는 배경 부속. 아래 지지면(지형/발판) 위에 밑면을 얹는다.
-                PlaceOnSurface(go.transform, mirrorMountPrefab, "mount", Z_OBJECT - 1,
-                               m.Pos[1], SurfaceBelow(s, m.Pos[0], m.Pos[1]));
 
                 // 퍼즐 초기화: 회전 가능한 거울만 정답에서 ±(22.5°×steps)만큼 랜덤하게 틀어 놓는다.
                 //   22.5° 배수로만 어긋나야 Q/E(22.5°씩)로 정답에 도달할 수 있다. 고정 거울은 건드리지 않는다.
@@ -664,7 +660,7 @@ namespace TowardTheStars.Level
             return float.IsNegativeInfinity(best) ? float.NaN : best;
         }
 
-        // 부속 아트(거울 거치대·횃불)를 원본 크기(×artScale) 그대로 두고, 밑면이 지지면에 닿도록 내려 놓는다(늘이지 않음).
+        // 부속 아트(횃불 등)를 원본 크기(×artScale) 그대로 두고, 밑면이 지지면에 닿도록 내려 놓는다(늘이지 않음).
         //   지지면을 못 찾으면 기준 오브젝트 중심에 배치.
         void PlaceOnSurface(Transform parent, GameObject prefab, string childName, int order, float anchorY, float surfaceY)
         {
