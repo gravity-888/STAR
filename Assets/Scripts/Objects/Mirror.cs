@@ -9,6 +9,7 @@ namespace TowardTheStars.Objects
     public class Mirror : MonoBehaviour, IBeamHit
     {
         [SerializeField] float angleDeg;
+        [SerializeField] float solutionAngle;   // 정답 각도 — 랜덤 초기화·정답 정렬의 기준
         [SerializeField] bool isFixed;
         // 아트 기본각 보정: 프리팹 아트가 0°가 아닌 방향으로 그려졌을 때 그 차이를 메운다(반사 연산에는 영향 없음).
         [SerializeField] float visualAngleOffset;
@@ -16,11 +17,29 @@ namespace TowardTheStars.Objects
         public float AngleDeg => angleDeg;
         public bool IsFixed => isFixed;
 
-        public void Init(float angleDeg, bool isFixed, float visualAngleOffset = 0f)
+        public void Init(float solutionAngle, bool isFixed, float visualAngleOffset = 0f)
         {
-            this.angleDeg = angleDeg;
+            this.solutionAngle = solutionAngle;
+            this.angleDeg = solutionAngle;   // 기본은 정답
             this.isFixed = isFixed;
             this.visualAngleOffset = visualAngleOffset;
+            ApplyVisualRotation();
+        }
+
+        // 정답에서 ±(22.5°×maxSteps) 랜덤하게 틀어 놓는다(회전 가능한 거울만).
+        //   22.5° 배수로만 어긋나므로 Q/E(22.5°씩)로 정답에 도달할 수 있다.
+        public void RandomizeFromSolution(int maxSteps)
+        {
+            if (isFixed || maxSteps <= 0) return;
+            int steps = Random.Range(-maxSteps, maxSteps + 1);
+            angleDeg = Mathf.Repeat(solutionAngle + steps * 22.5f, 360f);
+            ApplyVisualRotation();
+        }
+
+        // 정답 각도로 즉시 정렬(정답 정렬 키).
+        public void SnapToSolution()
+        {
+            angleDeg = Mathf.Repeat(solutionAngle, 360f);
             ApplyVisualRotation();
         }
 

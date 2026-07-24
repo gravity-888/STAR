@@ -43,6 +43,9 @@ namespace TowardTheStars.Level
         [Header("플레이테스트 편의 키")]
         public bool restartKey = true;       // R: 현재 스테이지 리셋(막혔을 때 구제)
         public bool debugStageKeys = true;   // 1~4: 해당 스테이지로 즉시 이동. 데모 빌드 시 끌 것
+        public bool autoSolveKey = true;     // P: 회전 가능한 거울을 전부 정답 각도로 정렬. 데모 빌드 시 끌 것
+
+        readonly List<Mirror> _mirrors = new();   // 이번 스테이지의 회전 가능 거울(정답 정렬·재랜덤 대상)
 
         // 숫자열 1~9 → stageOrder 인덱스 0~8. Key enum 산술 대신 명시 배열(할당 1회).
         static readonly Key[] DigitKeys =
@@ -135,6 +138,7 @@ namespace TowardTheStars.Level
             if (kb == null) return;
 
             if (restartKey && kb.rKey.wasPressedThisFrame) { Restart(); return; }
+            if (autoSolveKey && kb.pKey.wasPressedThisFrame) { SolveAllMirrors(); return; }
 
             if (!debugStageKeys) return;
             int n = Mathf.Min(stageOrder.Length, DigitKeys.Length);
@@ -163,6 +167,7 @@ namespace TowardTheStars.Level
             }
 
             Clear();
+            _mirrors.Clear();
             _root = new GameObject($"Level_{stageKey}").transform;
             _root.SetParent(transform, false);
 
@@ -187,6 +192,10 @@ namespace TowardTheStars.Level
             var tracer = new GameObject("BeamTracer").AddComponent<BeamTracer>();
             tracer.transform.SetParent(_root, false);
             tracer.Trace();
+
+            // 랜덤 초기화가 우연히 게이트를 열어버리면(우회 경로) 닫힌 배치가 나올 때까지 다시 섞는다.
+            //   → 항상 "안 풀린 상태"로 시작. 22.5° 배수 랜덤이라 정답 도달성은 유지.
+            if (randomizeMirrors && _mirrors.Count > 0) EnsureUnsolvedStart(tracer);
 
             SetupCamera(stage, player);
 
@@ -223,6 +232,28 @@ namespace TowardTheStars.Level
             int idx = System.Array.IndexOf(stageOrder, stageKey);
             if (idx <= 0) return;
             StartCoroutine(Transition(stageOrder[idx - 1], true));
+        }
+
+        // 정답 정렬 키(P): 회전 가능한 거울을 전부 정답 각도로 스냅. 빛은 BeamTracer가 다음 LateUpdate에 자동 재추적.
+        public void SolveAllMirrors()
+        {
+            foreach (var mir in _mirrors) if (mir != null) mir.SnapToSolution();
+        }
+
+        // 랜덤 초기화가 게이트를 열어버리면 닫힌 배치가 나올 때까지 다시 섞는다(최대 시도 제한).
+        void EnsureUnsolvedStart(BeamTracer tracer)
+        {
+            var gates = Object.FindObjectsByType<GateDetector>(FindObjectsSortMode.None);
+            bool AnyOpen()
+            {
+                foreach (var g in gates) if (g != null && g.IsOpen) return true;
+                return false;
+            }
+            for (int attempt = 0; attempt < 20 && AnyOpen(); attempt++)
+            {
+                foreach (var mir in _mirrors) if (mir != null) mir.RandomizeFromSolution(mirrorRandomSteps);
+                tracer.Trace();
+            }
         }
 
         // 타이틀에서 게임 시작: 첫 스테이지(stageOrder[0])부터 즉시 빌드. GameManager가 호출.
@@ -395,20 +426,16 @@ namespace TowardTheStars.Level
                 var col = m.Fixed ? C_MirrorFix : C_Mirror;
                 var mp = m.Fixed ? mirrorFixedPrefab : mirrorPrefab;
 
-                // 퍼즐 초기화: 회전 가능한 거울만 정답에서 ±(22.5°×steps)만큼 랜덤하게 틀어 놓는다.
-                //   22.5° 배수로만 어긋나야 Q/E(22.5°씩)로 정답에 도달할 수 있다. 고정 거울은 건드리지 않는다.
-                float angle = m.AngleDeg;
-                if (randomizeMirrors && !m.Fixed && mirrorRandomSteps > 0)
-                {
-                    int steps = Random.Range(-mirrorRandomSteps, mirrorRandomSteps + 1);
-                    angle = Mathf.Repeat(angle + steps * 22.5f, 360f);
-                }
-
-                // 아트 기본각 보정은 프리팹에만 적용(색 사각형 막대는 보정 없이 -angle 그대로).
+                // 아트 기본각 보정은 프리팹에만 적용(색 사각형 막대는 보정 없이 -angle 그대로). 초기 회전은 Mirror가 곧 덮어씀.
                 float artOffset = mp != null ? mirrorArtAngleOffset : 0f;
-                Visual(go.transform, mp, col, Z_OBJECT, new Vector2(1.1f, 0.18f), -angle,
-                       prefabRotZ: -angle + artOffset);
-                go.AddComponent<Mirror>().Init(angle, m.Fixed, artOffset);   // 변수 주입(런타임 회전도 보정 유지)
+                Visual(go.transform, mp, col, Z_OBJECT, new Vector2(1.1f, 0.18f), -m.AngleDeg,
+                       prefabRotZ: -m.AngleDeg + artOffset);
+
+                var mirror = go.AddComponent<Mirror>();
+                mirror.Init(m.AngleDeg, m.Fixed, artOffset);   // 기준 = 정답
+                // 퍼즐 초기화: 회전 가능한 거울만 정답에서 랜덤하게 틀어 놓는다(22.5° 배수 → Q/E로 정답 도달 가능).
+                if (randomizeMirrors) mirror.RandomizeFromSolution(mirrorRandomSteps);
+                if (!m.Fixed) _mirrors.Add(mirror);   // 정답 정렬/재랜덤 대상
             }
         }
 
