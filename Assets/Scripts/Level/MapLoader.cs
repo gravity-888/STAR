@@ -333,9 +333,9 @@ namespace TowardTheStars.Level
                 box.size = new Vector2(0.6f, h);
                 box.isTrigger = true;   // 빛 통과 + 플레이어 등반 감지용
                 go.AddComponent<Ladder>().Init(h);
-                // 사다리 높이 h는 데이터 종속 → 프리팹에도 세로 스케일로 전달.
-                Visual(go.transform, ladderPrefab, C_Ladder, Z_PLATFORM, new Vector2(0.3f, h), 0f,
-                       prefabScale: new Vector2(1f, h));
+                // 사다리 길이 h는 데이터 종속 → 아트 원본 높이와 무관하게 h에 맞춘다(가로 굵기는 아트 크기 그대로).
+                if (ladderPrefab != null) InstantiateLadder(go.transform, ladderPrefab, Z_PLATFORM, h);
+                else Visual(go.transform, C_Ladder, Z_PLATFORM, new Vector2(0.3f, h));
             }
         }
 
@@ -596,6 +596,25 @@ namespace TowardTheStars.Level
         {
             if (prefab == null) return;
             InstantiatePrefab(parent, prefab, childName, order, 0f, null);
+        }
+
+        // 사다리 전용: 아트 원본 높이와 무관하게 세로만 사다리 길이 h에 맞춘다(가로는 아트 원본 크기 유지).
+        SpriteRenderer InstantiateLadder(Transform parent, GameObject prefab, int order, float h)
+        {
+            var go = Instantiate(prefab, parent, false);
+            go.name = "visual";
+            go.transform.localPosition = Vector3.zero;
+            go.transform.localRotation = Quaternion.identity;
+
+            SpriteRenderer first = null;
+            foreach (var sr in go.GetComponentsInChildren<SpriteRenderer>(true))
+            {
+                sr.sortingOrder = order + sr.sortingOrder;
+                if (first == null) first = sr;
+            }
+            float ny = (first != null && first.sprite != null) ? Mathf.Max(first.sprite.bounds.size.y, 0.0001f) : 1f;
+            go.transform.localScale = new Vector3(1f, h / ny, 1f);
+            return first;
         }
 
         // 게이트 문 전용: "긴 하나의 아트"를 원본 크기와 무관하게 개폐존(w×h)에 정확히 맞춘다.
