@@ -271,7 +271,8 @@ namespace TowardTheStars.Level
                 if (!int.TryParse(kv.Key, out int x)) continue;
                 for (int y = 0; y <= kv.Value; y++)
                     // 지형은 밟는 바닥 → 솔리드 콜라이더(플레이어 지지). 빛 차단은 벽이 담당.
-                    SolidDecor($"terrain_{x}_{y}", new Vector2(x, y), C_Terrain, Z_TERRAIN, Vector2.one, Vector2.one, terrainPrefab);
+                    SolidDecor($"terrain_{x}_{y}", new Vector2(x, y), C_Terrain, Z_TERRAIN, Vector2.one, Vector2.one,
+                               terrainPrefab, fitToScale: true);   // 1칸에 딱 맞춤 → 옆 칸과 연결
             }
         }
 
@@ -297,7 +298,7 @@ namespace TowardTheStars.Level
                 var go = SolidRoot($"wall_{c[0]}_{c[1]}", new Vector2(c[0], c[1]), 1.0f);
                 bool passLight = transmit.Contains((c[0], c[1]));
                 Visual(go.transform, passLight ? wallGlassPrefab : wallPrefab,
-                       passLight ? C_WallGlass : C_Wall, Z_TERRAIN, Vector2.one);
+                       passLight ? C_WallGlass : C_Wall, Z_TERRAIN, Vector2.one, fitToScale: true);   // 1칸 딱 맞춤
                 if (passLight) go.AddComponent<BeamTransparent>();   // 빛만 통과, 플레이어는 막음
             }
         }
@@ -315,7 +316,7 @@ namespace TowardTheStars.Level
                     var go = SolidDecor($"plat_{p.Id}_{c[0]}_{c[1]}", new Vector2(c[0], c[1]),
                           p.Transmit ? C_Platform : C_PlatformSolid, Z_PLATFORM,
                           new Vector2(1f, 0.4f), new Vector2(1f, 0.4f),
-                          p.Transmit ? platformPrefab : platformSolidPrefab);
+                          p.Transmit ? platformPrefab : platformSolidPrefab, fitToScale: true);   // 가로 1칸 딱 맞춤 → 옆 칸과 연결
                     if (p.Transmit) go.AddComponent<BeamTransparent>();
                 }
             }
@@ -553,20 +554,22 @@ namespace TowardTheStars.Level
         }
 
         // 시각 + 솔리드(트리거 아님) BoxCollider2D. 플레이어가 밟고 설 수 있는 지형/발판용.
-        GameObject SolidDecor(string name, Vector2 pos, Color col, int order, Vector2 scale, Vector2 colliderSize, GameObject prefab = null)
+        GameObject SolidDecor(string name, Vector2 pos, Color col, int order, Vector2 scale, Vector2 colliderSize,
+                              GameObject prefab = null, bool fitToScale = false)
         {
-            var go = Decor(name, pos, col, order, scale, 0f, prefab);
+            var go = Decor(name, pos, col, order, scale, 0f, prefab, fitToScale);
             go.AddComponent<BoxCollider2D>().size = colliderSize;
             return go;
         }
 
         // 콜라이더 없는 순수 시각 오브젝트.
-        GameObject Decor(string name, Vector2 pos, Color col, int order, Vector2 scale, float rotZ = 0f, GameObject prefab = null)
+        GameObject Decor(string name, Vector2 pos, Color col, int order, Vector2 scale, float rotZ = 0f,
+                         GameObject prefab = null, bool fitToScale = false)
         {
             var go = new GameObject(name);
             go.transform.SetParent(_root, false);
             go.transform.position = new Vector3(pos.x, pos.y, 0f);
-            Visual(go.transform, prefab, col, order, scale, rotZ);
+            Visual(go.transform, prefab, col, order, scale, rotZ, fitToScale: fitToScale);
             return go;
         }
 
@@ -590,9 +593,11 @@ namespace TowardTheStars.Level
         //   prefabScale : 프리팹에 적용할 스케일(사다리 높이 등). null이면 프리팹 원본 크기 유지.
         //   반환        : 색 폴백이면 그 SpriteRenderer, 프리팹이면 첫 SpriteRenderer(없으면 null) — 게이트 색 피드백 호환.
         SpriteRenderer Visual(Transform parent, GameObject prefab, Color col, int order, Vector2 scale, float rotZ = 0f,
-                              float prefabRotZ = 0f, Vector2? prefabScale = null)
+                              float prefabRotZ = 0f, Vector2? prefabScale = null, bool fitToScale = false)
         {
             if (prefab == null) return Visual(parent, col, order, scale, rotZ);
+            // fitToScale: 타일처럼 칸에 딱 맞아야 하는 것 → scale 크기에 정확히 맞춤(이웃과 연결).
+            if (fitToScale) return InstantiateFitted(parent, prefab, "visual", order, prefabRotZ, scale);
             return InstantiatePrefab(parent, prefab, "visual", order, prefabRotZ, prefabScale);
         }
 
@@ -601,6 +606,27 @@ namespace TowardTheStars.Level
         {
             if (prefab == null) return;
             InstantiatePrefab(parent, prefab, childName, order, 0f, null);
+        }
+
+        // 타일 전용: 아트 원본 크기와 무관하게 지정 크기(칸)에 정확히 맞춘다.
+        //   → 옆 칸 오브젝트와 빈틈·겹침 없이 딱 맞물린다. 배율(artScale)은 적용하지 않는다(적용하면 타일링이 깨짐).
+        SpriteRenderer InstantiateFitted(Transform parent, GameObject prefab, string childName, int order, float rotZ, Vector2 size)
+        {
+            var go = Instantiate(prefab, parent, false);
+            go.name = childName;
+            go.transform.localPosition = Vector3.zero;
+            go.transform.localRotation = Quaternion.Euler(0f, 0f, rotZ);
+
+            SpriteRenderer first = null;
+            foreach (var sr in go.GetComponentsInChildren<SpriteRenderer>(true))
+            {
+                sr.sortingOrder = order + sr.sortingOrder;
+                if (first == null) first = sr;
+            }
+            var nat = (first != null && first.sprite != null) ? first.sprite.bounds.size : Vector3.one;
+            go.transform.localScale = new Vector3(size.x / Mathf.Max(nat.x, 0.0001f),
+                                                  size.y / Mathf.Max(nat.y, 0.0001f), 1f);
+            return first;
         }
 
         // 사다리 전용: 아트 원본 높이와 무관하게 세로만 사다리 길이 h에 맞춘다(가로는 아트 원본 크기 유지).
