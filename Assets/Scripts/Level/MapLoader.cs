@@ -78,6 +78,11 @@ namespace TowardTheStars.Level
         // 프리팹 seam: 오브젝트별 시각 프리팹 슬롯. 비우면 위 색 사각형으로 폴백(동작 동일).
         //   프리팹은 각 오브젝트의 "visual" 자식(=아트)만 대체 — 콜라이더·로직은 루트에 그대로.
         //   임시/최종 아트는 이 슬롯만 채우면 되고 코드 변경이 없어야 한다(로드맵 3·7).
+        // 아트 파일 크기·콜라이더는 그대로 두고, 프리팹 아트가 화면에 보이는 크기만 이 배율로 키운다.
+        //   1 = 원본 크기. 콜라이더·빛 판정은 영향 없음(퍼즐 동작 불변).
+        [Header("아트 표시 배율")]
+        public float artScale = 2f;
+
         [Header("프리팹 슬롯 (비우면 색 사각형 폴백)")]
         public GameObject terrainPrefab;
         public GameObject wallPrefab;
@@ -613,7 +618,8 @@ namespace TowardTheStars.Level
                 if (first == null) first = sr;
             }
             float ny = (first != null && first.sprite != null) ? Mathf.Max(first.sprite.bounds.size.y, 0.0001f) : 1f;
-            go.transform.localScale = new Vector3(1f, h / ny, 1f);
+            // 세로는 사다리 길이에 고정(배율 미적용 — 길이가 달라지면 안 됨), 가로 굵기만 표시 배율 적용.
+            go.transform.localScale = new Vector3(artScale, h / ny, 1f);
             return first;
         }
 
@@ -654,8 +660,9 @@ namespace TowardTheStars.Level
             go.name = childName;
             go.transform.localPosition = Vector3.zero;
             go.transform.localRotation = Quaternion.Euler(0f, 0f, rotZ);
-            if (scale.HasValue)
-                go.transform.localScale = new Vector3(scale.Value.x, scale.Value.y, 1f);
+            // 표시 배율 적용(아트 파일·콜라이더는 그대로, 보이는 크기만 확대).
+            var baseScale = scale.HasValue ? new Vector3(scale.Value.x, scale.Value.y, 1f) : go.transform.localScale;
+            go.transform.localScale = new Vector3(baseScale.x * artScale, baseScale.y * artScale, baseScale.z);
 
             SpriteRenderer first = null;
             foreach (var sr in go.GetComponentsInChildren<SpriteRenderer>(true))
