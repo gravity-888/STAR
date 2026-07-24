@@ -339,8 +339,8 @@ namespace TowardTheStars.Level
                 box.size = new Vector2(0.6f, h);
                 box.isTrigger = true;   // 빛 통과 + 플레이어 등반 감지용
                 go.AddComponent<Ladder>().Init(h);
-                // 사다리 길이 h는 데이터 종속 → 아트 원본 높이와 무관하게 h에 맞춘다(가로 굵기는 아트 크기 그대로).
-                if (ladderPrefab != null) InstantiateLadder(go.transform, ladderPrefab, Z_PLATFORM, h);
+                // 사다리는 1칸짜리 조각을 세로로 h개 쌓아 만든다(늘이지 않고 아트 비율 유지).
+                if (ladderPrefab != null) BuildLadderSegments(go.transform, ladderPrefab, Z_PLATFORM, h);
                 else Visual(go.transform, C_Ladder, Z_PLATFORM, new Vector2(0.3f, h));
             }
         }
@@ -629,24 +629,29 @@ namespace TowardTheStars.Level
             return first;
         }
 
-        // 사다리 전용: 아트 원본 높이와 무관하게 세로만 사다리 길이 h에 맞춘다(가로는 아트 원본 크기 유지).
-        SpriteRenderer InstantiateLadder(Transform parent, GameObject prefab, int order, float h)
+        // 사다리 전용: 1칸짜리 조각 프리팹을 세로로 h개 쌓는다.
+        //   각 조각은 세로 1칸에 맞추되 **균일 스케일**이라 아트 비율이 그대로 유지된다(늘어나지 않음).
+        //   가로 굵기는 아트의 가로:세로 비율이 결정한다(예: 24×40 → 0.6칸). 배율(artScale)은 미적용 — 칸 격자에 맞춰야 하므로.
+        void BuildLadderSegments(Transform parent, GameObject prefab, int order, int h)
         {
-            var go = Instantiate(prefab, parent, false);
-            go.name = "visual";
-            go.transform.localPosition = Vector3.zero;
-            go.transform.localRotation = Quaternion.identity;
-
-            SpriteRenderer first = null;
-            foreach (var sr in go.GetComponentsInChildren<SpriteRenderer>(true))
+            for (int i = 0; i < h; i++)
             {
-                sr.sortingOrder = order + sr.sortingOrder;
-                if (first == null) first = sr;
+                var seg = Instantiate(prefab, parent, false);
+                seg.name = $"seg_{i}";
+                // 부모는 스팬 중앙에 있으므로, i번째 칸은 중앙 기준 (i - (h-1)/2)칸 위치.
+                seg.transform.localPosition = new Vector3(0f, i - (h - 1) * 0.5f, 0f);
+                seg.transform.localRotation = Quaternion.identity;
+
+                SpriteRenderer first = null;
+                foreach (var sr in seg.GetComponentsInChildren<SpriteRenderer>(true))
+                {
+                    sr.sortingOrder = order + sr.sortingOrder;
+                    if (first == null) first = sr;
+                }
+                float nh = (first != null && first.sprite != null) ? Mathf.Max(first.sprite.bounds.size.y, 0.0001f) : 1f;
+                float s = 1f / nh;                                   // 세로 1칸에 맞추는 균일 배율 → 비율 유지
+                seg.transform.localScale = new Vector3(s, s, 1f);
             }
-            float ny = (first != null && first.sprite != null) ? Mathf.Max(first.sprite.bounds.size.y, 0.0001f) : 1f;
-            // 세로는 사다리 길이에 고정(배율 미적용 — 길이가 달라지면 안 됨), 가로 굵기만 표시 배율 적용.
-            go.transform.localScale = new Vector3(artScale, h / ny, 1f);
-            return first;
         }
 
         // 게이트 문 전용: "긴 하나의 아트"를 원본 크기와 무관하게 개폐존(w×h)에 정확히 맞춘다.
