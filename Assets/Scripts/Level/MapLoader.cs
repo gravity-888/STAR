@@ -372,8 +372,9 @@ namespace TowardTheStars.Level
                 var go = SolidRoot($"mirror_{m.Id}", new Vector2(m.Pos[0], m.Pos[1]), 0.9f);
                 var col = m.Fixed ? C_MirrorFix : C_Mirror;
                 var mp = m.Fixed ? mirrorFixedPrefab : mirrorPrefab;
-                // 거치대(고정) — 회전하지 않는 배경 부속. 거울(반사면)만 -angle 회전.
-                PrefabChild(go.transform, mirrorMountPrefab, "mount", Z_OBJECT - 1);
+                // 거치대(고정) — 회전하지 않는 배경 부속. 아래 지지면(지형/발판) 위에 밑면을 얹는다.
+                PlaceMount(go.transform, mirrorMountPrefab, Z_OBJECT - 1,
+                           m.Pos[1], SurfaceBelow(s, m.Pos[0], m.Pos[1]));
                 // 거울 각도는 물리적 반사면 → "visual" 자식(=거울)을 -angle 로 회전(런타임 회전은 Mirror가 담당).
                 Visual(go.transform, mp, col, Z_OBJECT, new Vector2(1.1f, 0.18f), -m.AngleDeg, prefabRotZ: -m.AngleDeg);
                 go.AddComponent<Mirror>().Init(m.AngleDeg, m.Fixed);   // 변수 주입
@@ -606,6 +607,61 @@ namespace TowardTheStars.Level
         {
             if (prefab == null) return;
             InstantiatePrefab(parent, prefab, childName, order, 0f, null);
+        }
+
+        // 지정 칸(col)에서 y보다 아래에 있는 가장 높은 지지면의 윗면 y를 구한다. 없으면 NaN.
+        //   지형은 0..t칸을 채우므로 윗면 = t+0.5, 발판은 두께 0.4라 윗면 = cy+0.2.
+        float SurfaceBelow(StageData s, int col, float y)
+        {
+            float best = float.NegativeInfinity;
+
+            if (s.Terrain != null && s.Terrain.TryGetValue(col.ToString(), out int t) && t >= 0)
+            {
+                float top = t + 0.5f;
+                if (top < y) best = Mathf.Max(best, top);
+            }
+
+            if (s.Platforms != null)
+                foreach (var p in s.Platforms)
+                {
+                    if (p.Missing || p.Cells == null) continue;
+                    foreach (var c in p.Cells)
+                    {
+                        if (c == null || c.Length < 2 || c[0] != col) continue;
+                        float top = c[1] + 0.2f;
+                        if (top < y) best = Mathf.Max(best, top);
+                    }
+                }
+
+            return float.IsNegativeInfinity(best) ? float.NaN : best;
+        }
+
+        // 거울 거치대: 원본 크기(×artScale) 그대로 두고, 밑면이 지지면에 닿도록 내려 놓는다(늘이지 않음).
+        //   지지면을 못 찾으면 기존처럼 거울 중심에 배치.
+        void PlaceMount(Transform parent, GameObject prefab, int order, float mirrorY, float surfaceY)
+        {
+            if (prefab == null) return;
+
+            var go = Instantiate(prefab, parent, false);
+            go.name = "mount";
+            go.transform.localRotation = Quaternion.identity;
+
+            SpriteRenderer first = null;
+            foreach (var sr in go.GetComponentsInChildren<SpriteRenderer>(true))
+            {
+                sr.sortingOrder = order + sr.sortingOrder;
+                if (first == null) first = sr;
+            }
+
+            var baseScale = go.transform.localScale;
+            go.transform.localScale = new Vector3(baseScale.x * artScale, baseScale.y * artScale, baseScale.z);
+
+            if (float.IsNaN(surfaceY)) { go.transform.localPosition = Vector3.zero; return; }
+
+            // 밑면을 지지면에 맞춤: 중심 = 지지면 + 높이/2 (부모=거울 기준 상대좌표로 변환)
+            float nh = (first != null && first.sprite != null) ? first.sprite.bounds.size.y : 1f;
+            float height = nh * go.transform.localScale.y;
+            go.transform.localPosition = new Vector3(0f, surfaceY + height * 0.5f - mirrorY, 0f);
         }
 
         // 타일 전용: 아트 원본 크기와 무관하게 지정 크기(칸)에 정확히 맞춘다.
