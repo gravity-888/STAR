@@ -83,6 +83,14 @@ namespace TowardTheStars.Level
         [Header("아트 표시 배율")]
         public float artScale = 2f;
 
+        [Header("거울")]
+        // 거울 아트 기본각 보정(도). 아트를 세로로 그렸으면 90. 반사 연산에는 영향 없고 프리팹 아트에만 적용된다.
+        public float mirrorArtAngleOffset = 90f;
+        // 맵 생성 시 회전 가능한 거울을 정답 각도에서 랜덤하게 틀어 놓는다(퍼즐 초기화).
+        public bool randomizeMirrors = true;
+        // 틀어놓을 최대 단계. 22.5°씩이라 2 = ±45°. Q/E로 맞출 수 있도록 반드시 22.5° 배수로만 어긋난다.
+        public int mirrorRandomSteps = 2;
+
         [Header("프리팹 슬롯 (비우면 색 사각형 폴백)")]
         public GameObject terrainPrefab;
         public GameObject wallPrefab;
@@ -337,6 +345,12 @@ namespace TowardTheStars.Level
                 if (l.YSpan == null || l.YSpan.Length < 2) continue;
                 int y0 = Mathf.Min(l.YSpan[0], l.YSpan[1]);
                 int y1 = Mathf.Max(l.YSpan[0], l.YSpan[1]);
+
+                // 땅 위에만 존재하게: 지형이 채운 칸(0..t)은 건너뛰고 그 위 칸부터 시작.
+                if (s.Terrain != null && s.Terrain.TryGetValue(l.Col.ToString(), out int t) && t >= 0)
+                    y0 = Mathf.Max(y0, t + 1);
+                if (y1 < y0) continue;   // 전부 땅속이면 사다리 없음
+
                 int h = y1 - y0 + 1;
                 var pos = new Vector2(l.Col, (y0 + y1) * 0.5f);   // 열 col, 세로 중앙
                 var go = new GameObject($"ladder_{l.Col}");
@@ -363,7 +377,9 @@ namespace TowardTheStars.Level
             go.transform.position = pos;
             var dir = GridMap.DirToVector(s.Source.Dir);
             go.AddComponent<LightSource>().Init(dir, 1f);
-            PrefabChild(go.transform, torchPrefab, "torch", Z_OBJECT - 1);   // 랜즈를 장착한 횃불(배경, 회전 안 함)
+            // 랜즈를 장착한 횃불 — 회전 없이, 밑면이 아래 지지면(지형/발판)에 닿도록 바닥에 세운다.
+            PlaceOnSurface(go.transform, torchPrefab, "torch", Z_OBJECT - 1,
+                           pos.y, SurfaceBelow(s, s.Source.Pos[0], s.Source.Pos[1]));
             Visual(go.transform, lensPrefab, C_Lens, Z_OBJECT, Vector2.one * 0.8f);
             // 방향 표시 점은 플레이스홀더 전용 — 프리팹 아트는 자체적으로 방향을 표현한다고 보고 생략.
             if (dir != Vector2.zero && lensPrefab == null)
@@ -380,11 +396,23 @@ namespace TowardTheStars.Level
                 var col = m.Fixed ? C_MirrorFix : C_Mirror;
                 var mp = m.Fixed ? mirrorFixedPrefab : mirrorPrefab;
                 // 거치대(고정) — 회전하지 않는 배경 부속. 아래 지지면(지형/발판) 위에 밑면을 얹는다.
-                PlaceMount(go.transform, mirrorMountPrefab, Z_OBJECT - 1,
-                           m.Pos[1], SurfaceBelow(s, m.Pos[0], m.Pos[1]));
-                // 거울 각도는 물리적 반사면 → "visual" 자식(=거울)을 -angle 로 회전(런타임 회전은 Mirror가 담당).
-                Visual(go.transform, mp, col, Z_OBJECT, new Vector2(1.1f, 0.18f), -m.AngleDeg, prefabRotZ: -m.AngleDeg);
-                go.AddComponent<Mirror>().Init(m.AngleDeg, m.Fixed);   // 변수 주입
+                PlaceOnSurface(go.transform, mirrorMountPrefab, "mount", Z_OBJECT - 1,
+                               m.Pos[1], SurfaceBelow(s, m.Pos[0], m.Pos[1]));
+
+                // 퍼즐 초기화: 회전 가능한 거울만 정답에서 ±(22.5°×steps)만큼 랜덤하게 틀어 놓는다.
+                //   22.5° 배수로만 어긋나야 Q/E(22.5°씩)로 정답에 도달할 수 있다. 고정 거울은 건드리지 않는다.
+                float angle = m.AngleDeg;
+                if (randomizeMirrors && !m.Fixed && mirrorRandomSteps > 0)
+                {
+                    int steps = Random.Range(-mirrorRandomSteps, mirrorRandomSteps + 1);
+                    angle = Mathf.Repeat(angle + steps * 22.5f, 360f);
+                }
+
+                // 아트 기본각 보정은 프리팹에만 적용(색 사각형 막대는 보정 없이 -angle 그대로).
+                float artOffset = mp != null ? mirrorArtAngleOffset : 0f;
+                Visual(go.transform, mp, col, Z_OBJECT, new Vector2(1.1f, 0.18f), -angle,
+                       prefabRotZ: -angle + artOffset);
+                go.AddComponent<Mirror>().Init(angle, m.Fixed, artOffset);   // 변수 주입(런타임 회전도 보정 유지)
             }
         }
 
@@ -500,10 +528,10 @@ namespace TowardTheStars.Level
             SpriteRenderer sr = gateDoorPrefab != null
                 ? InstantiateGateDoor(block.transform, gateDoorPrefab, Z_OBJECT, w, h)
                 : Visual(block.transform, door.closedColor, Z_OBJECT, new Vector2(w - 0.1f, h - 0.1f));
-            door.Register(box, sr);
+            door.Register(box, sr, h);           // 열릴 때 개폐존 높이만큼 위로 올라간다
 
-            door.SetOpen(false);                 // 기본 닫힘(막힘)
-            det.OnStateChanged += door.SetOpen;  // 광량 임계 통과 시 즉시 여닫이
+            door.SetOpenImmediate(false);        // 기본 닫힘(막힘) — 최초 배치는 연출 없이
+            det.OnStateChanged += door.SetOpen;  // 광량 임계 통과 시 천천히 여닫이
         }
 
         void BuildDecoys(StageData s)
@@ -609,13 +637,6 @@ namespace TowardTheStars.Level
             return InstantiatePrefab(parent, prefab, "visual", order, prefabRotZ, prefabScale);
         }
 
-        // 회전·색 폴백이 필요 없는 부속 프리팹(거울 거치대·횃불 등)을 이름 붙인 자식으로 배치. 비면 아무것도 안 함.
-        void PrefabChild(Transform parent, GameObject prefab, string childName, int order)
-        {
-            if (prefab == null) return;
-            InstantiatePrefab(parent, prefab, childName, order, 0f, null);
-        }
-
         // 지정 칸(col)에서 y보다 아래에 있는 가장 높은 지지면의 윗면 y를 구한다. 없으면 NaN.
         //   지형은 0..t칸을 채우므로 윗면 = t+0.5, 발판도 윗면을 칸 위 모서리에 맞추므로 = cy+0.5.
         float SurfaceBelow(StageData s, int col, float y)
@@ -643,14 +664,14 @@ namespace TowardTheStars.Level
             return float.IsNegativeInfinity(best) ? float.NaN : best;
         }
 
-        // 거울 거치대: 원본 크기(×artScale) 그대로 두고, 밑면이 지지면에 닿도록 내려 놓는다(늘이지 않음).
-        //   지지면을 못 찾으면 기존처럼 거울 중심에 배치.
-        void PlaceMount(Transform parent, GameObject prefab, int order, float mirrorY, float surfaceY)
+        // 부속 아트(거울 거치대·횃불)를 원본 크기(×artScale) 그대로 두고, 밑면이 지지면에 닿도록 내려 놓는다(늘이지 않음).
+        //   지지면을 못 찾으면 기준 오브젝트 중심에 배치.
+        void PlaceOnSurface(Transform parent, GameObject prefab, string childName, int order, float anchorY, float surfaceY)
         {
             if (prefab == null) return;
 
             var go = Instantiate(prefab, parent, false);
-            go.name = "mount";
+            go.name = childName;
             go.transform.localRotation = Quaternion.identity;
 
             SpriteRenderer first = null;
@@ -665,10 +686,10 @@ namespace TowardTheStars.Level
 
             if (float.IsNaN(surfaceY)) { go.transform.localPosition = Vector3.zero; return; }
 
-            // 밑면을 지지면에 맞춤: 중심 = 지지면 + 높이/2 (부모=거울 기준 상대좌표로 변환)
+            // 밑면을 지지면에 맞춤: 중심 = 지지면 + 높이/2 (부모 기준 상대좌표로 변환)
             float nh = (first != null && first.sprite != null) ? first.sprite.bounds.size.y : 1f;
             float height = nh * go.transform.localScale.y;
-            go.transform.localPosition = new Vector3(0f, surfaceY + height * 0.5f - mirrorY, 0f);
+            go.transform.localPosition = new Vector3(0f, surfaceY + height * 0.5f - anchorY, 0f);
         }
 
         // 타일 전용: 아트 원본 크기와 무관하게 지정 크기(칸)에 정확히 맞춘다.

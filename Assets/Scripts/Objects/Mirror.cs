@@ -10,14 +10,17 @@ namespace TowardTheStars.Objects
     {
         [SerializeField] float angleDeg;
         [SerializeField] bool isFixed;
+        // 아트 기본각 보정: 프리팹 아트가 0°가 아닌 방향으로 그려졌을 때 그 차이를 메운다(반사 연산에는 영향 없음).
+        [SerializeField] float visualAngleOffset;
 
         public float AngleDeg => angleDeg;
         public bool IsFixed => isFixed;
 
-        public void Init(float angleDeg, bool isFixed)
+        public void Init(float angleDeg, bool isFixed, float visualAngleOffset = 0f)
         {
             this.angleDeg = angleDeg;
             this.isFixed = isFixed;
+            this.visualAngleOffset = visualAngleOffset;
             ApplyVisualRotation();
         }
 
@@ -41,11 +44,11 @@ namespace TowardTheStars.Objects
             return (d - 2f * Vector2.Dot(d, n) * n).normalized;
         }
 
-        // 시각용 막대(자식)를 rotation_z = -angle 로 회전.
+        // 시각용 자식("visual")을 rotation_z = -angle + 아트 기본각 보정 으로 회전.
         void ApplyVisualRotation()
         {
             var visual = transform.Find("visual");
-            if (visual != null) visual.localRotation = Quaternion.Euler(0f, 0f, -angleDeg);
+            if (visual != null) visual.localRotation = Quaternion.Euler(0f, 0f, -angleDeg + visualAngleOffset);
         }
     }
 }
