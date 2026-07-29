@@ -79,6 +79,7 @@ Assets/Scripts/
 - **`stages_cord.json`** — ★최신 맵 (SVG 재추출, stage4 발판·지형·벽·사다리 완비).
 - 맵 수정 = 이 JSON 편집 → 저장 → Unity 포커스(재임포트) → MapLoader 우클릭 **Build**.
 - 파일 이름은 자유(스키마만 같으면 됨). Stage Key는 파일 안 stages의 키(`stage1`~`stage4`)와 일치해야 함.
+- **맵 에디터(웹툴)**: [`tools/map-editor.html`](tools/map-editor.html) — 격자에 지형·벽·발판·사다리·광원(방향)·거울(각도·고정)·프리즘·게이트·개폐존·스폰 등을 배치하고 **이 스키마 그대로 JSON 출력**(내보내기) + 기존 맵 **불러오기**. 브라우저에서 파일을 열어 사용(설치 불필요). 출력물을 `Assets/Maps/`에 넣고 MapLoader에 지정. 좌표 y=위로 증가, 거울 각도 22.5° 스냅, export↔import 라운드트립 검증됨. (P1 MVP — 빛 경로 미리보기·undo 등은 미구현)
 
 ---
 

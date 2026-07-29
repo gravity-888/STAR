@@ -1,0 +1,327 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>별을 향해 — 맵 에디터</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  html,body { margin:0; height:100%; font-family: "Malgun Gothic","맑은 고딕",system-ui,sans-serif; background:#0e1016; color:#e6e8ef; }
+  #app { display:grid; grid-template-columns: 190px 1fr 250px; grid-template-rows: 44px 1fr; height:100%; }
+  header { grid-column:1/4; display:flex; align-items:center; gap:8px; padding:0 10px; background:#151824; border-bottom:1px solid #262b3d; }
+  header .title { font-weight:700; color:#ffe9b0; margin-right:6px; }
+  header .tabs { display:flex; gap:4px; }
+  header button, .panel button, .panel select, .panel input[type=number] { background:#232941; color:#dfe3f0; border:1px solid #37406a; border-radius:6px; padding:4px 8px; cursor:pointer; font-size:12px; }
+  header button:hover, .panel button:hover { background:#2e3760; }
+  header .tab.active { background:#3a6df0; border-color:#3a6df0; color:#fff; }
+  header .sp { flex:1; }
+  header .hint { font-size:11px; color:#8b93ad; }
+  aside { background:#12141d; border-right:1px solid #262b3d; overflow:auto; padding:8px; }
+  aside.right { border-right:none; border-left:1px solid #262b3d; }
+  .palette { display:flex; flex-direction:column; gap:3px; }
+  .palette button { display:flex; align-items:center; gap:8px; text-align:left; background:#191d2b; border:1px solid #2a3047; border-radius:6px; padding:6px 8px; color:#cfd4e6; cursor:pointer; font-size:12px; }
+  .palette button.active { border-color:#3a6df0; background:#20284a; color:#fff; }
+  .swatch { width:14px; height:14px; border-radius:3px; border:1px solid #0006; flex:none; }
+  .sec { margin-top:12px; font-size:11px; text-transform:uppercase; letter-spacing:.05em; color:#7b83a0; }
+  .panel { padding:0; }
+  .panel .row { display:flex; align-items:center; gap:6px; margin:6px 0; font-size:12px; }
+  .panel label { color:#aeb4cc; }
+  .arrows { display:grid; grid-template-columns:repeat(3,1fr); gap:3px; width:110px; }
+  .arrows button { padding:4px; font-size:14px; }
+  .arrows button.on { background:#3a6df0; border-color:#3a6df0; color:#fff; }
+  canvas { display:block; width:100%; height:100%; background:#0b0d13; cursor:crosshair; }
+  .cv-wrap { position:relative; overflow:hidden; }
+  .readout { position:absolute; left:8px; bottom:8px; font-size:11px; color:#8b93ad; background:#0b0d13cc; padding:3px 7px; border-radius:5px; pointer-events:none; }
+  textarea { width:100%; height:150px; background:#0b0d13; color:#9fe0b0; border:1px solid #2a3047; border-radius:6px; font-family:ui-monospace,monospace; font-size:10px; }
+  .small { font-size:11px; color:#8b93ad; margin:4px 0; }
+  .danger { border-color:#7a2f3a!important; color:#f2a6b0!important; }
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <span class="title">별을 향해 · 맵 에디터</span>
+    <div class="tabs" id="stageTabs"></div>
+    <span class="hint">좌클릭=배치 · 우클릭=삭제 · 가운데드래그/스페이스=이동 · 휠=줌</span>
+    <span class="sp"></span>
+    <label class="hint">W<input id="gw" type="number" min="4" max="120" style="width:52px"></label>
+    <label class="hint">H<input id="gh" type="number" min="4" max="120" style="width:52px"></label>
+    <button id="btnImport">불러오기</button>
+    <button id="btnExport">내보내기(JSON)</button>
+  </header>
+
+  <aside>
+    <div class="sec">배치 요소</div>
+    <div class="palette" id="palette"></div>
+    <div class="sec">스테이지</div>
+    <button id="btnClear" class="danger" style="width:100%">현재 스테이지 비우기</button>
+  </aside>
+
+  <div class="cv-wrap">
+    <canvas id="cv"></canvas>
+    <div class="readout" id="readout">—</div>
+  </div>
+
+  <aside class="right">
+    <div class="sec" id="propTitle">속성</div>
+    <div class="panel" id="prop"></div>
+    <div class="sec">JSON 미리보기</div>
+    <button id="btnPreview" style="width:100%">현재 상태 → JSON 보기</button>
+    <textarea id="jsonView" readonly placeholder="여기에 출력 JSON이 표시됩니다"></textarea>
+    <input id="fileInput" type="file" accept="application/json,.json" style="display:none">
+  </aside>
+</div>
+
+<script>
+"use strict";
+// ---------- 상수 ----------
+const ARROWS = ["↖","↑","↗","←","·","→","↙","↓","↘"];          // 3x3 방향 그리드(·=없음)
+const ARROW_VEC = { "→":[1,0],"←":[-1,0],"↑":[0,1],"↓":[0,-1],"↗":[1,1],"↖":[-1,1],"↘":[1,-1],"↙":[-1,-1] };
+const STAGES = ["stage1","stage2","stage3","stage4"];
+
+// 팔레트: id, 한글, 종류, 색
+const TOOLS = [
+  { id:"terrain",  label:"지형(바닥)",   kind:"terrain", color:"#5a4230" },
+  { id:"wall",     label:"벽",           kind:"cell",    color:"#33333c" },
+  { id:"wallT",    label:"빛 통과 벽",   kind:"cell",    color:"#738cb3" },
+  { id:"platform", label:"발판",         kind:"cell",    color:"#4d8ef2" },
+  { id:"ladder",   label:"사다리",       kind:"cell",    color:"#cc9a4d" },
+  { id:"zone",     label:"게이트 문(개폐존)", kind:"cell", color:"#c85a4d" },
+  { id:"entrance", label:"입장 통로",    kind:"cell",    color:"#9b6cf2" },
+  { id:"source",   label:"광원(랜즈)",   kind:"single",  color:"#ffe64d" },
+  { id:"gate",     label:"게이트 수광부",kind:"single",  color:"#4de676" },
+  { id:"mirror",   label:"거울",         kind:"mirror",  color:"#8ce6ff" },
+  { id:"prism",    label:"프리즘",       kind:"single",  color:"#f272f2" },
+  { id:"spawn",    label:"스폰",         kind:"single",  color:"#ffffff" },
+  { id:"exitSpawn",label:"출구 스폰",    kind:"single",  color:"#bcd0ff" },
+  { id:"decoy",    label:"디코이",       kind:"multi",   color:"#e65a5a" },
+];
+
+// ---------- 상태 ----------
+function blankStage(){ return {
+  W:30, H:15, terrain:{},                 // terrain: col->height
+  wall:new Set(), wallT:new Set(), platT:new Set(), platS:new Set(),
+  ladder:new Set(), zone:new Set(), entrance:new Set(),
+  mirrors:[], decoys:[],
+  source:null, gate:null, prism:null, spawn:null, exitSpawn:null, camera:null,
+};}
+const state = {
+  stages: Object.fromEntries(STAGES.map(k=>[k, blankStage()])),
+  cur:"stage1", tool:"terrain",
+  view:{ox:60, oy:-40, cell:26},          // oy는 아래(원점) 여백 — draw에서 y-flip
+  brush:{ angle:45, dir:"↙", fixed:false, transmit:true, prismOut:new Set(["→","↗"]), prismFixed:false },
+  sel:null,                                // 선택된 거울 인덱스
+};
+const S = ()=>state.stages[state.cur];
+const key=(x,y)=>x+","+y;
+const unkey=k=>k.split(",").map(Number);
+
+// ---------- 좌표 변환(그리드 y=위로 증가) ----------
+const cv=document.getElementById("cv"), ctx=cv.getContext("2d");
+function toScreen(gx,gy){ const v=state.view; return [v.ox+gx*v.cell, cv.height - (v.oy+ (gy+1)*v.cell)]; } // 셀 좌하단 기준 화면 top-left
+function toCell(mx,my){ const v=state.view; const gx=Math.floor((mx-v.ox)/v.cell); const gy=Math.floor((cv.height-my-v.oy)/v.cell); return [gx,gy]; }
+
+// ---------- 렌더 ----------
+function resize(){ const wrap=cv.parentElement; cv.width=wrap.clientWidth; cv.height=wrap.clientHeight; draw(); }
+function fillCell(gx,gy,color,inset=0){ const [x,y]=toScreen(gx,gy); const c=state.view.cell; ctx.fillStyle=color; ctx.fillRect(x+inset, y+inset, c-inset*2, c-inset*2); }
+function draw(){
+  const s=S(), v=state.view, c=v.cell;
+  ctx.clearRect(0,0,cv.width,cv.height);
+  // 그리드 배경
+  for(let gx=0; gx<s.W; gx++) for(let gy=0; gy<s.H; gy++){ const [x,y]=toScreen(gx,gy); ctx.fillStyle=((gx+gy)&1)?"#0f1219":"#12151d"; ctx.fillRect(x,y,c,c); }
+  // 지형
+  ctx.fillStyle="#5a4230"; for(const [col,h] of Object.entries(s.terrain)){ const cx=+col; for(let gy=0; gy<=h; gy++) fillCell(cx,gy,"#5a4230"); }
+  // 벽/발판/사다리/존/입장
+  for(const k of s.wall)  fillCell(...unkey(k),"#33333c");
+  for(const k of s.wallT) fillCell(...unkey(k),"#738cb3aa");
+  for(const k of s.platT) drawPlat(k,"#4d8ef2aa");
+  for(const k of s.platS) drawPlat(k,"#1c3a72");
+  for(const k of s.ladder)fillCell(...unkey(k),"#cc9a4d",c*0.32);
+  for(const k of s.zone)  fillCell(...unkey(k),"#c85a4dcc",2);
+  for(const k of s.entrance) fillCell(...unkey(k),"#9b6cf288",2);
+  // 격자선
+  ctx.strokeStyle="#20263a"; ctx.lineWidth=1;
+  for(let gx=0; gx<=s.W; gx++){ const [x,y]=toScreen(gx,0); ctx.beginPath(); ctx.moveTo(x, y+c); ctx.lineTo(x, y+c - s.H*c); ctx.stroke(); }
+  for(let gy=0; gy<=s.H; gy++){ const [x,y]=toScreen(0,gy); ctx.beginPath(); ctx.moveTo(x, y+c); ctx.lineTo(x + s.W*c, y+c); ctx.stroke(); }
+  // 포인트 오브젝트
+  if(s.spawn) marker(s.spawn,"#ffffff","S");
+  if(s.exitSpawn) marker(s.exitSpawn,"#bcd0ff","E");
+  for(const d of s.decoys) marker(d,"#e65a5a","·");
+  if(s.gate) marker(s.gate,"#4de676","G");
+  if(s.prism){ marker(s.prism,"#f272f2","P"); for(const a of s.prism.out) arrowGlyph(s.prism,a,"#f272f2"); }
+  if(s.source){ marker(s.source,"#ffe64d","◎"); arrowGlyph(s.source,s.source.dir,"#ffe64d"); }
+  s.mirrors.forEach((m,i)=> drawMirror(m,i));
+}
+function drawPlat(k,color){ const [gx,gy]=unkey(k); const [x,y]=toScreen(gx,gy); const c=state.view.cell; ctx.fillStyle=color; ctx.fillRect(x, y+c*0.1, c, c*0.4); }
+function marker(o,color,glyph){ const [x,y]=toScreen(o.x,o.y); const c=state.view.cell; ctx.fillStyle=color; ctx.beginPath(); ctx.arc(x+c/2,y+c/2,c*0.34,0,7); ctx.fill(); ctx.fillStyle="#0b0d13"; ctx.font=`bold ${c*0.42}px sans-serif`; ctx.textAlign="center"; ctx.textBaseline="middle"; ctx.fillText(glyph,x+c/2,y+c/2+1); }
+function arrowGlyph(o,dir,color){ const v=ARROW_VEC[dir]; if(!v) return; const [x,y]=toScreen(o.x,o.y); const c=state.view.cell; const cx=x+c/2, cy=y+c/2; ctx.strokeStyle=color; ctx.lineWidth=2; ctx.beginPath(); ctx.moveTo(cx,cy); ctx.lineTo(cx+v[0]*c*0.55, cy-v[1]*c*0.55); ctx.stroke(); }
+function drawMirror(m,i){ const [x,y]=toScreen(m.x,m.y); const c=state.view.cell; const cx=x+c/2, cy=y+c/2; ctx.save(); ctx.translate(cx,cy); ctx.rotate(m.angle*Math.PI/180); // 게임 rotation_z=-angle(y-up) = 캔버스 +angle(y-down) → 동일 방향
+  ctx.fillStyle=m.fixed?"#9a9aa5":"#8ce6ff"; ctx.fillRect(-c*0.55,-c*0.09,c*1.1,c*0.18); ctx.restore();
+  if(state.sel===i){ ctx.strokeStyle="#fff"; ctx.lineWidth=2; ctx.strokeRect(x+2,y+2,c-4,c-4); }
+  ctx.fillStyle="#0009"; ctx.font=`${c*0.3}px sans-serif`; ctx.textAlign="center"; ctx.textBaseline="middle"; ctx.fillText(m.angle+"°",cx,cy);
+}
+
+// ---------- 배치/삭제 ----------
+function inBounds(gx,gy){ const s=S(); return gx>=0&&gy>=0&&gx<s.W&&gy<s.H; }
+function apply(gx,gy,erase){
+  if(!inBounds(gx,gy)) return; const s=S(), t=state.tool, k=key(gx,gy), b=state.brush;
+  switch(t){
+    case "terrain": if(erase) delete s.terrain[gx]; else s.terrain[gx]=gy; break;
+    case "wall":    toggleSet(s.wall,k,erase); s.wallT.delete(k); break;
+    case "wallT":   toggleSet(s.wallT,k,erase); s.wall.delete(k); break;
+    case "platform": if(erase){s.platT.delete(k); s.platS.delete(k);} else { (b.transmit?s.platT:s.platS).add(k); (b.transmit?s.platS:s.platT).delete(k);} break;
+    case "ladder":  toggleSet(s.ladder,k,erase); break;
+    case "zone":    toggleSet(s.zone,k,erase); break;
+    case "entrance":toggleSet(s.entrance,k,erase); break;
+    case "source":  s.source= erase?null:{x:gx,y:gy,dir:b.dir}; break;
+    case "gate":    s.gate= erase?null:{x:gx,y:gy}; break;
+    case "spawn":   s.spawn= erase?null:{x:gx,y:gy}; break;
+    case "exitSpawn": s.exitSpawn= erase?null:{x:gx,y:gy}; break;
+    case "prism":   s.prism= erase?null:{x:gx,y:gy,out:[...b.prismOut],fixed:b.prismFixed}; break;
+    case "decoy":   if(erase){ s.decoys=s.decoys.filter(d=>!(d.x===gx&&d.y===gy)); } else if(!s.decoys.some(d=>d.x===gx&&d.y===gy)) s.decoys.push({x:gx,y:gy}); break;
+    case "mirror":  applyMirror(gx,gy,erase); break;
+  }
+  draw();
+}
+function toggleSet(set,k,erase){ if(erase) set.delete(k); else set.add(k); }
+function applyMirror(gx,gy,erase){ const s=S(); const idx=s.mirrors.findIndex(m=>m.x===gx&&m.y===gy);
+  if(erase){ if(idx>=0){ s.mirrors.splice(idx,1); state.sel=null; buildProp(); } return; }
+  if(idx>=0){ state.sel=idx; const m=s.mirrors[idx]; state.brush.angle=m.angle; state.brush.fixed=m.fixed; buildProp(); }
+  else { s.mirrors.push({x:gx,y:gy,angle:state.brush.angle,fixed:state.brush.fixed}); state.sel=s.mirrors.length-1; buildProp(); }
+}
+
+// ---------- 입력 ----------
+let dragBtn=-1, panning=false, spaceDown=false, last=[0,0];
+cv.addEventListener("contextmenu",e=>e.preventDefault());
+cv.addEventListener("mousedown",e=>{ const r=cv.getBoundingClientRect(), mx=e.clientX-r.left, my=e.clientY-r.top;
+  if(e.button===1 || (e.button===0&&spaceDown)){ panning=true; last=[mx,my]; return; }
+  dragBtn=e.button; const [gx,gy]=toCell(mx,my); apply(gx,gy,e.button===2);
+});
+window.addEventListener("mousemove",e=>{ const r=cv.getBoundingClientRect(), mx=e.clientX-r.left, my=e.clientY-r.top;
+  const [gx,gy]=toCell(mx,my); document.getElementById("readout").textContent = inBounds(gx,gy)?`셀 (${gx}, ${gy})`:"—";
+  if(panning){ state.view.ox+=mx-last[0]; state.view.oy-=my-last[1]; last=[mx,my]; draw(); return; }
+  if(dragBtn>=0 && ["terrain","wall","wallT","platform","ladder","zone","entrance"].includes(state.tool)) apply(gx,gy,dragBtn===2);
+});
+window.addEventListener("mouseup",()=>{ dragBtn=-1; panning=false; });
+cv.addEventListener("wheel",e=>{ e.preventDefault(); const r=cv.getBoundingClientRect(), mx=e.clientX-r.left, my=e.clientY-r.top;
+  const old=state.view.cell; const nc=Math.max(8,Math.min(80, old*(e.deltaY<0?1.12:0.89)));
+  // 마우스 위치 고정 줌
+  state.view.ox = mx-(mx-state.view.ox)*(nc/old);
+  state.view.oy = (cv.height-my)-((cv.height-my)-state.view.oy)*(nc/old);
+  state.view.cell=nc; draw();
+},{passive:false});
+window.addEventListener("keydown",e=>{ if(e.code==="Space"){ spaceDown=true; cv.style.cursor="grab"; } });
+window.addEventListener("keyup",e=>{ if(e.code==="Space"){ spaceDown=false; cv.style.cursor="crosshair"; } });
+
+// ---------- UI 구성 ----------
+function buildPalette(){ const el=document.getElementById("palette"); el.innerHTML="";
+  for(const t of TOOLS){ const b=document.createElement("button"); b.className="pal"+(t.id===state.tool?" active":""); b.dataset.id=t.id;
+    b.innerHTML=`<span class="swatch" style="background:${t.color}"></span>${t.label}`;
+    b.onclick=()=>{ state.tool=t.id; state.sel=null; buildPalette(); buildProp(); }; el.appendChild(b);
+  }
+}
+function buildTabs(){ const el=document.getElementById("stageTabs"); el.innerHTML="";
+  for(const k of STAGES){ const b=document.createElement("button"); b.className="tab"+(k===state.cur?" active":""); b.textContent=k.replace("stage","S");
+    b.onclick=()=>{ state.cur=k; state.sel=null; syncGrid(); buildTabs(); buildProp(); draw(); }; el.appendChild(b);
+  }
+}
+function arrowPicker(selName, current, onPick){ const wrap=document.createElement("div"); wrap.className="arrows";
+  for(const a of ARROWS){ const b=document.createElement("button"); b.textContent=a; const on=(selName==="multi")?current.has(a):(current===a); if(a!=="·"&&on) b.className="on";
+    b.onclick=()=>onPick(a); wrap.appendChild(b); } return wrap; }
+function buildProp(){ const p=document.getElementById("prop"), t=state.tool, b=state.brush; p.innerHTML="";
+  document.getElementById("propTitle").textContent = "속성 · "+(TOOLS.find(x=>x.id===t)?.label||"");
+  const row=(html)=>{ const d=document.createElement("div"); d.className="row"; d.innerHTML=html; p.appendChild(d); return d; };
+  if(t==="mirror"){
+    const sel = state.sel!=null ? S().mirrors[state.sel] : null;
+    row(`<label>${sel?("선택 M"+(state.sel+1)):"새 거울"} 각도</label>`);
+    const r=row(`<button id="am">−22.5</button><b id="av" style="min-width:52px;text-align:center">${b.angle}°</b><button id="ap">+22.5</button>`);
+    r.querySelector("#am").onclick=()=>setAngle(b.angle-22.5);
+    r.querySelector("#ap").onclick=()=>setAngle(b.angle+22.5);
+    const rf=row(`<label><input type="checkbox" id="fx" ${b.fixed?"checked":""}> 고정(회전 불가)</label>`);
+    rf.querySelector("#fx").onchange=e=>{ b.fixed=e.target.checked; if(sel){sel.fixed=b.fixed; draw();} };
+    p.appendChild(document.createElement("div")).className="small";
+    p.lastChild.textContent="거울을 클릭하면 선택돼 각도를 수정합니다. 우클릭=삭제.";
+  } else if(t==="source"){
+    row(`<label>발사 방향</label>`); p.appendChild(arrowPicker("single",b.dir,a=>{ if(a==="·")return; b.dir=a; if(S().source)S().source.dir=a; draw(); buildProp(); }));
+  } else if(t==="prism"){
+    row(`<label>출력 방향(복수 선택)</label>`); p.appendChild(arrowPicker("multi",b.prismOut,a=>{ if(a==="·")return; b.prismOut.has(a)?b.prismOut.delete(a):b.prismOut.add(a); if(S().prism)S().prism.out=[...b.prismOut]; draw(); buildProp(); }));
+    const rf=row(`<label><input type="checkbox" id="pf" ${b.prismFixed?"checked":""}> 고정</label>`); rf.querySelector("#pf").onchange=e=>{ b.prismFixed=e.target.checked; if(S().prism)S().prism.fixed=b.prismFixed; };
+  } else if(t==="platform"){
+    const rf=row(`<label><input type="checkbox" id="tr" ${b.transmit?"checked":""}> 빛 투과(파랑) / 해제=차단(남색)</label>`); rf.querySelector("#tr").onchange=e=>b.transmit=e.target.checked;
+  } else if(t==="terrain"){
+    p.innerHTML=`<div class="small">칸을 클릭하면 그 열의 지형이 바닥(y=0)부터 그 높이까지 채워집니다. 우클릭=열 삭제.</div>`;
+  } else {
+    p.innerHTML=`<div class="small">좌클릭으로 배치, 우클릭으로 삭제합니다.</div>`;
+  }
+}
+function setAngle(a){ a=((a%360)+360)%360; state.brush.angle=a; if(state.tool==="mirror"&&state.sel!=null){ S().mirrors[state.sel].angle=a; } draw(); buildProp(); }
+function syncGrid(){ document.getElementById("gw").value=S().W; document.getElementById("gh").value=S().H; }
+
+document.getElementById("gw").onchange=e=>{ S().W=Math.max(4,Math.min(120,+e.target.value||30)); draw(); };
+document.getElementById("gh").onchange=e=>{ S().H=Math.max(4,Math.min(120,+e.target.value||15)); draw(); };
+document.getElementById("btnClear").onclick=()=>{ if(confirm(state.cur+"를 비울까요?")){ const W=S().W,H=S().H; state.stages[state.cur]=blankStage(); S().W=W; S().H=H; state.sel=null; draw(); } };
+
+// ---------- 내보내기 / 불러오기 ----------
+function exportData(){ const out={ unit:{cell_px:40,unity_world_per_cell:1.0}, stages:{} };
+  for(const k of STAGES){ const s=state.stages[k]; const st={};
+    st.stage=+k.replace("stage",""); st.grid={W:s.W,H:s.H};
+    if(s.source) st.source={pos:[s.source.x,s.source.y],dir:s.source.dir};
+    st.prism = s.prism ? {pos:[s.prism.x,s.prism.y],out:s.prism.out,fixed:s.prism.fixed} : null;
+    if(s.gate) st.gate={pos:[s.gate.x,s.gate.y]};
+    st.mirrors=s.mirrors.map((m,i)=>({id:"M"+(i+1),pos:[m.x,m.y],angle_deg:m.angle,fixed:m.fixed}));
+    const plats=[]; if(s.platT.size)plats.push({id:"P_pass",cells:[...s.platT].map(unkey),transmit:true}); if(s.platS.size)plats.push({id:"P_block",cells:[...s.platS].map(unkey),transmit:false}); st.platforms=plats;
+    st.ladders=groupLadders(s.ladder);
+    st.decoys=s.decoys.map((d,i)=>({id:"D"+(i+1),pos:[d.x,d.y]}));
+    if(s.spawn) st.spawn=[s.spawn.x,s.spawn.y];
+    if(s.exitSpawn) st.exit_spawn=[s.exitSpawn.x,s.exitSpawn.y];
+    st.gate_open_zone=[...s.zone].map(unkey);
+    st.wall_transmit=[...s.wallT].map(unkey);
+    st.entrance=[...s.entrance].map(unkey);
+    st.terrain=Object.fromEntries(Object.entries(s.terrain).map(([c,h])=>[c,h]));
+    st.wall=[...s.wall,...s.wallT].map(unkey);          // 빛통과벽도 벽 목록에 포함(+wall_transmit로 표시)
+    if(s.camera) st.camera=s.camera;
+    out.stages[k]=st;
+  }
+  return out;
+}
+function groupLadders(set){ const byCol={}; for(const k of set){ const [x,y]=unkey(k); (byCol[x]??=[]).push(y); }
+  return Object.entries(byCol).map(([c,ys])=>({col:+c,y_span:[Math.min(...ys),Math.max(...ys)]})); }
+
+function importData(obj){ const st=obj.stages||obj; for(const k of STAGES){ const src=st[k]; const s=blankStage(); if(src){
+    s.W=src.grid?.W||30; s.H=src.grid?.H||15;
+    if(src.terrain) for(const [c,h] of Object.entries(src.terrain)) s.terrain[c]=h;
+    const wt=new Set((src.wall_transmit||[]).map(a=>key(a[0],a[1]))); s.wallT=new Set(wt);
+    for(const a of (src.wall||[])){ const kk=key(a[0],a[1]); if(!wt.has(kk)) s.wall.add(kk); }
+    // wall_x* 같은 다른 벽 키도 흡수
+    for(const [kk,v] of Object.entries(src)) if(kk.startsWith("wall")&&kk!=="wall_transmit"&&Array.isArray(v)) for(const a of v){ const c=key(a[0],a[1]); if(!wt.has(c)) s.wall.add(c); }
+    for(const p of (src.platforms||[])){ if(p.MISSING||!p.cells) continue; for(const a of p.cells){ (p.transmit===false?s.platS:s.platT).add(key(a[0],a[1])); } }
+    for(const l of (src.ladders||[])){ if(!l.y_span)continue; for(let y=l.y_span[0]; y<=l.y_span[1]; y++) s.ladder.add(key(l.col,y)); }
+    for(const a of (src.gate_open_zone||[])) s.zone.add(key(a[0],a[1]));
+    for(const a of (src.entrance||[])) s.entrance.add(key(a[0],a[1]));
+    if(src.source?.pos) s.source={x:src.source.pos[0],y:src.source.pos[1],dir:src.source.dir||"↓"};
+    if(src.gate?.pos) s.gate={x:src.gate.pos[0],y:src.gate.pos[1]};
+    if(src.prism?.pos) s.prism={x:src.prism.pos[0],y:src.prism.pos[1],out:src.prism.out||[],fixed:!!src.prism.fixed};
+    if(src.spawn) s.spawn={x:src.spawn[0],y:src.spawn[1]};
+    if(src.exit_spawn) s.exitSpawn={x:src.exit_spawn[0],y:src.exit_spawn[1]};
+    for(const m of (src.mirrors||[])) if(m.pos) s.mirrors.push({x:m.pos[0],y:m.pos[1],angle:m.angle_deg||0,fixed:!!m.fixed});
+    for(const d of (src.decoys||[])) if(d.pos) s.decoys.push({x:d.pos[0],y:d.pos[1]});
+    if(src.camera) s.camera=src.camera;
+  } state.stages[k]=s; }
+  state.sel=null; syncGrid(); draw();
+}
+
+document.getElementById("btnExport").onclick=()=>{ const json=JSON.stringify(exportData(),null,2);
+  const blob=new Blob([json],{type:"application/json"}); const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download="stages_editor.json"; a.click(); URL.revokeObjectURL(a.href);
+  document.getElementById("jsonView").value=json; };
+document.getElementById("btnPreview").onclick=()=>{ document.getElementById("jsonView").value=JSON.stringify(exportData(),null,2); };
+document.getElementById("btnImport").onclick=()=>document.getElementById("fileInput").click();
+document.getElementById("fileInput").onchange=e=>{ const f=e.target.files[0]; if(!f)return; const rd=new FileReader(); rd.onload=()=>{ try{ importData(JSON.parse(rd.result)); }catch(err){ alert("불러오기 실패: "+err.message); } }; rd.readAsText(f); e.target.value=""; };
+
+// ---------- 시작 ----------
+buildPalette(); buildTabs(); buildProp(); syncGrid();
+new ResizeObserver(resize).observe(cv.parentElement);
+resize();
+</script>
+</body>
+</html>
