@@ -80,6 +80,7 @@
 const ARROWS = ["↖","↑","↗","←","·","→","↙","↓","↘"];          // 3x3 방향 그리드(·=없음)
 const ARROW_VEC = { "→":[1,0],"←":[-1,0],"↑":[0,1],"↓":[0,-1],"↗":[1,1],"↖":[-1,1],"↘":[1,-1],"↙":[-1,-1] };
 const STAGES = ["stage1","stage2","stage3","stage4"];
+const DEFAULT_VIEW = 16;   // MapLoader.cameraViewCells 기본값(세로 표시 칸수)
 
 // 팔레트: id, 한글, 종류, 색
 const TOOLS = [
@@ -113,6 +114,7 @@ const state = {
   stages: Object.fromEntries(STAGES.map(k=>[k, blankStage()])),
   cur:"stage1", tool:"terrain",
   view:{ox:60, oy:-40, cell:26},          // oy는 아래(원점) 여백 — draw에서 y-flip
+  aspect:16/9,                            // 게임 화면 가로/세로 비율(카메라 계산용, 저장 안 됨)
   brush:{ angle:45, dir:"↙", fixed:false, transmit:true, prismOut:new Set(["→","↗"]), prismFixed:false },
   sel:null,                                // 선택된 거울 인덱스
 };
@@ -124,6 +126,27 @@ const unkey=k=>k.split(",").map(Number);
 const cv=document.getElementById("cv"), ctx=cv.getContext("2d");
 function toScreen(gx,gy){ const v=state.view; return [v.ox+gx*v.cell, cv.height - (v.oy+ (gy+1)*v.cell)]; } // 셀 좌하단 기준 화면 top-left
 function toCell(mx,my){ const v=state.view; const gx=Math.floor((mx-v.ox)/v.cell); const gy=Math.floor((cv.height-my-v.oy)/v.cell); return [gx,gy]; }
+// 월드 좌표(셀 단위, 게임과 동일: 셀 중심=정수, 경계=±0.5) → 화면 픽셀
+function w2s(wx,wy){ const v=state.view,c=v.cell; return [v.ox+(wx+0.5)*c, cv.height-(v.oy+(wy+0.5)*c)]; }
+function drawWorldRect(x0,y0,x1,y1,o){ const a=w2s(x0,y0), b=w2s(x1,y1); const L=Math.min(a[0],b[0]),R=Math.max(a[0],b[0]),T=Math.min(a[1],b[1]),B=Math.max(a[1],b[1]);
+  ctx.setLineDash(o.dash||[]); ctx.strokeStyle=o.stroke; ctx.lineWidth=2; ctx.strokeRect(L,T,R-L,B-T); ctx.setLineDash([]);
+  if(o.label){ ctx.fillStyle=o.stroke; ctx.font="12px sans-serif"; const pos=o.labelPos||"tl";
+    ctx.textAlign=pos[1]==="r"?"right":"left"; ctx.textBaseline=pos[0]==="b"?"bottom":"top";
+    ctx.fillText(o.label, pos[1]==="r"?R-4:L+4, pos[0]==="b"?B-4:T+4); } }
+// 게임 SetupCamera + CameraFollow.Clamp 을 그대로 재현: 카메라 중심이 이동 가능한 범위 + 뷰포트 절반크기.
+function cameraCalc(s){ const cam=s.camera||{}; const sp=cam.side_pad||0,tp=cam.top_pad||0,bp=cam.bottom_pad||0;
+  const levelMin={x:-0.5-sp,y:-0.5-bp}, levelMax={x:s.W-0.5+sp,y:s.H-0.5+tp};
+  const asp=Math.max(0.2, state.aspect||16/9);
+  let ortho=(cam.view_cells>0?cam.view_cells:DEFAULT_VIEW)/2;   // 세로 절반(orthographicSize)
+  if(cam.fit_width) ortho=(levelMax.x-levelMin.x)/2/asp;         // 가로 폭 맞춤
+  ortho=Math.min(ortho,(levelMax.y-levelMin.y)/2);              // 세로 경계 초과 방지
+  const halfH=ortho, halfW=ortho*asp;
+  let cMinX=levelMin.x+halfW,cMaxX=levelMax.x-halfW,cMinY=levelMin.y+halfH,cMaxY=levelMax.y-halfH;
+  const validX=cMinX<=cMaxX, validY=cMinY<=cMaxY;               // 레벨이 뷰포트보다 좁으면 중앙 고정
+  if(!validX){const m=(levelMin.x+levelMax.x)/2; cMinX=cMaxX=m;}
+  if(!validY){const m=(levelMin.y+levelMax.y)/2; cMinY=cMaxY=m;}
+  return {levelMin,levelMax,halfW,halfH,cMinX,cMaxX,cMinY,cMaxY,validX,validY};
+}
 
 // ---------- 렌더 ----------
 function resize(){ const wrap=cv.parentElement; cv.width=wrap.clientWidth; cv.height=wrap.clientHeight; draw(); }
@@ -155,12 +178,12 @@ function draw(){
   if(s.prism){ marker(s.prism,"#f272f2","P"); for(const a of s.prism.out) arrowGlyph(s.prism,a,"#f272f2"); }
   if(s.source){ marker(s.source,"#ffe64d","◎"); arrowGlyph(s.source,s.source.dir,"#ffe64d"); }
   s.mirrors.forEach((m,i)=> drawMirror(m,i));
-  // 카메라 도구 선택 시: 카메라 클램프 범위(레벨 경계 ± 패드)를 청록 점선으로 표시
-  if(state.tool==="camera"){ const cam=s.camera||{}; const sp=cam.side_pad||0, tp=cam.top_pad||0, bp=cam.bottom_pad||0;
-    const left=v.ox - sp*c, right=v.ox+(s.W+sp)*c;
-    const yTop=cv.height-(v.oy+(s.H+tp)*c), yBot=cv.height-(v.oy - bp*c);
-    ctx.setLineDash([7,5]); ctx.strokeStyle="#5bd6c0"; ctx.lineWidth=2; ctx.strokeRect(left,yTop,right-left,yBot-yTop); ctx.setLineDash([]);
-    ctx.fillStyle="#5bd6c0"; ctx.font="12px sans-serif"; ctx.textAlign="left"; ctx.textBaseline="top"; ctx.fillText("카메라 경계(패드 포함)", left+5, yTop+5);
+  // 카메라 도구 선택 시: ①레벨경계(±패드) ②카메라가 비추는 화면 크기 ③카메라 중심이 이동 가능한 최대 범위
+  if(state.tool==="camera"){ const cc=cameraCalc(s);
+    drawWorldRect(cc.levelMin.x, cc.levelMin.y, cc.levelMax.x, cc.levelMax.y, {stroke:"#4a5170", dash:[3,4], label:"레벨 경계(±패드)", labelPos:"tr"});
+    const mx=(cc.cMinX+cc.cMaxX)/2, my=(cc.cMinY+cc.cMaxY)/2;   // 이동범위 중앙에 화면 크기 예시
+    drawWorldRect(mx-cc.halfW, my-cc.halfH, mx+cc.halfW, my+cc.halfH, {stroke:"#ffd24d", label:"화면(비추는 크기)", labelPos:"tl"});
+    drawWorldRect(cc.cMinX, cc.cMinY, cc.cMaxX, cc.cMaxY, {stroke:"#5bd6c0", dash:[7,5], label:"카메라 이동 범위", labelPos:"bl"});
   }
 }
 function drawPlat(k,color){ const [gx,gy]=unkey(k); const [x,y]=toScreen(gx,gy); const c=state.view.cell; ctx.fillStyle=color; ctx.fillRect(x, y+c*0.1, c, c*0.4); }
@@ -275,7 +298,10 @@ function buildProp(){ const p=document.getElementById("prop"), t=state.tool, b=s
     const rf=row(`<label><input type="checkbox" id="tr" ${b.transmit?"checked":""}> 빛 투과(파랑) / 해제=차단(남색)</label>`); rf.querySelector("#tr").onchange=e=>b.transmit=e.target.checked;
   } else if(t==="camera"){
     const cam=S().camera||{}; const g=k=>cam[k]||0;
-    row(`<div class="small">플레이어 추적 카메라의 줌·이동 범위(스테이지별). 그리드에 청록 점선으로 범위가 표시됩니다.</div>`);
+    row(`<div class="small">그리드에: <b style="color:#ffd24d">노랑</b>=화면(비추는 크기), <b style="color:#5bd6c0">청록</b>=카메라 이동 범위, 회색=레벨 경계.</div>`);
+    const ra=row(`<label style="flex:1">화면 비율(가로/세로)</label><input type="number" step="0.01" id="c_asp" value="${(state.aspect||16/9).toFixed(2)}" style="width:60px">`);
+    ra.querySelector("#c_asp").oninput=e=>{ state.aspect=Math.max(0.2,+e.target.value||16/9); draw(); };
+    row(`<div class="small">16:9=1.78 · 21:9=2.33 · 4:3=1.33. 게임 화면 비율(맵에 저장 안 됨).</div>`);
     const numRow=(k,label)=>{ const r=row(`<label style="flex:1">${label}</label><input type="number" step="0.5" id="c_${k}" value="${g(k)}" style="width:60px">`); r.querySelector("#c_"+k).oninput=e=>setCam(k,+e.target.value||0); };
     numRow("view_cells","세로 표시 칸수(0=기본)");
     const rf=row(`<label><input type="checkbox" id="c_fw" ${cam.fit_width?"checked":""}> 가로 폭 맞춤(fit_width)</label>`); rf.querySelector("#c_fw").onchange=e=>setCam("fit_width",e.target.checked);
