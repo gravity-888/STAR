@@ -36,6 +36,7 @@
   textarea { width:100%; height:150px; background:#0b0d13; color:#9fe0b0; border:1px solid #2a3047; border-radius:6px; font-family:ui-monospace,monospace; font-size:10px; }
   .small { font-size:11px; color:#8b93ad; margin:4px 0; }
   .danger { border-color:#7a2f3a!important; color:#f2a6b0!important; }
+  .armed { background:#7a2f3a!important; color:#fff!important; }
 </style>
 </head>
 <body>
@@ -82,6 +83,7 @@ const STAGES = ["stage1","stage2","stage3","stage4"];
 
 // 팔레트: id, 한글, 종류, 색
 const TOOLS = [
+  { id:"eraser",   label:"지우개(전체 삭제)", kind:"eraser", color:"#8b93ad" },
   { id:"terrain",  label:"지형(바닥)",   kind:"terrain", color:"#5a4230" },
   { id:"wall",     label:"벽",           kind:"cell",    color:"#33333c" },
   { id:"wallT",    label:"빛 통과 벽",   kind:"cell",    color:"#738cb3" },
@@ -96,6 +98,7 @@ const TOOLS = [
   { id:"spawn",    label:"스폰",         kind:"single",  color:"#ffffff" },
   { id:"exitSpawn",label:"출구 스폰",    kind:"single",  color:"#bcd0ff" },
   { id:"decoy",    label:"디코이",       kind:"multi",   color:"#e65a5a" },
+  { id:"camera",   label:"카메라 범위",  kind:"camera",  color:"#5bd6c0" },
 ];
 
 // ---------- 상태 ----------
@@ -152,6 +155,13 @@ function draw(){
   if(s.prism){ marker(s.prism,"#f272f2","P"); for(const a of s.prism.out) arrowGlyph(s.prism,a,"#f272f2"); }
   if(s.source){ marker(s.source,"#ffe64d","◎"); arrowGlyph(s.source,s.source.dir,"#ffe64d"); }
   s.mirrors.forEach((m,i)=> drawMirror(m,i));
+  // 카메라 도구 선택 시: 카메라 클램프 범위(레벨 경계 ± 패드)를 청록 점선으로 표시
+  if(state.tool==="camera"){ const cam=s.camera||{}; const sp=cam.side_pad||0, tp=cam.top_pad||0, bp=cam.bottom_pad||0;
+    const left=v.ox - sp*c, right=v.ox+(s.W+sp)*c;
+    const yTop=cv.height-(v.oy+(s.H+tp)*c), yBot=cv.height-(v.oy - bp*c);
+    ctx.setLineDash([7,5]); ctx.strokeStyle="#5bd6c0"; ctx.lineWidth=2; ctx.strokeRect(left,yTop,right-left,yBot-yTop); ctx.setLineDash([]);
+    ctx.fillStyle="#5bd6c0"; ctx.font="12px sans-serif"; ctx.textAlign="left"; ctx.textBaseline="top"; ctx.fillText("카메라 경계(패드 포함)", left+5, yTop+5);
+  }
 }
 function drawPlat(k,color){ const [gx,gy]=unkey(k); const [x,y]=toScreen(gx,gy); const c=state.view.cell; ctx.fillStyle=color; ctx.fillRect(x, y+c*0.1, c, c*0.4); }
 function marker(o,color,glyph){ const [x,y]=toScreen(o.x,o.y); const c=state.view.cell; ctx.fillStyle=color; ctx.beginPath(); ctx.arc(x+c/2,y+c/2,c*0.34,0,7); ctx.fill(); ctx.fillStyle="#0b0d13"; ctx.font=`bold ${c*0.42}px sans-serif`; ctx.textAlign="center"; ctx.textBaseline="middle"; ctx.fillText(glyph,x+c/2,y+c/2+1); }
@@ -167,6 +177,8 @@ function inBounds(gx,gy){ const s=S(); return gx>=0&&gy>=0&&gx<s.W&&gy<s.H; }
 function apply(gx,gy,erase){
   if(!inBounds(gx,gy)) return; const s=S(), t=state.tool, k=key(gx,gy), b=state.brush;
   switch(t){
+    case "eraser":  eraseAll(gx,gy); break;                 // 종류 무관 그 칸의 모든 요소 삭제
+    case "camera":  break;                                  // 배치 아님(속성 패널에서 설정)
     case "terrain": if(erase) delete s.terrain[gx]; else s.terrain[gx]=gy; break;
     case "wall":    toggleSet(s.wall,k,erase); s.wallT.delete(k); break;
     case "wallT":   toggleSet(s.wallT,k,erase); s.wall.delete(k); break;
@@ -185,6 +197,18 @@ function apply(gx,gy,erase){
   draw();
 }
 function toggleSet(set,k,erase){ if(erase) set.delete(k); else set.add(k); }
+// 지우개: 그 칸에 있는 모든 종류의 요소를 삭제(선택 도구와 무관).
+function eraseAll(gx,gy){ const s=S(), k=key(gx,gy);
+  if(s.terrain[gx]!=null && gy<=s.terrain[gx]){ if(gy<=0) delete s.terrain[gx]; else s.terrain[gx]=gy-1; }  // 지형은 열 높이라 이 칸 위로 잘라냄
+  s.wall.delete(k); s.wallT.delete(k); s.platT.delete(k); s.platS.delete(k); s.ladder.delete(k); s.zone.delete(k); s.entrance.delete(k);
+  if(s.source&&s.source.x===gx&&s.source.y===gy) s.source=null;
+  if(s.gate&&s.gate.x===gx&&s.gate.y===gy) s.gate=null;
+  if(s.prism&&s.prism.x===gx&&s.prism.y===gy) s.prism=null;
+  if(s.spawn&&s.spawn.x===gx&&s.spawn.y===gy) s.spawn=null;
+  if(s.exitSpawn&&s.exitSpawn.x===gx&&s.exitSpawn.y===gy) s.exitSpawn=null;
+  s.decoys=s.decoys.filter(d=>!(d.x===gx&&d.y===gy));
+  const mi=s.mirrors.findIndex(m=>m.x===gx&&m.y===gy); if(mi>=0){ s.mirrors.splice(mi,1); state.sel=null; buildProp(); }
+}
 function applyMirror(gx,gy,erase){ const s=S(); const idx=s.mirrors.findIndex(m=>m.x===gx&&m.y===gy);
   if(erase){ if(idx>=0){ s.mirrors.splice(idx,1); state.sel=null; buildProp(); } return; }
   if(idx>=0){ state.sel=idx; const m=s.mirrors[idx]; state.brush.angle=m.angle; state.brush.fixed=m.fixed; buildProp(); }
@@ -201,7 +225,7 @@ cv.addEventListener("mousedown",e=>{ const r=cv.getBoundingClientRect(), mx=e.cl
 window.addEventListener("mousemove",e=>{ const r=cv.getBoundingClientRect(), mx=e.clientX-r.left, my=e.clientY-r.top;
   const [gx,gy]=toCell(mx,my); document.getElementById("readout").textContent = inBounds(gx,gy)?`셀 (${gx}, ${gy})`:"—";
   if(panning){ state.view.ox+=mx-last[0]; state.view.oy-=my-last[1]; last=[mx,my]; draw(); return; }
-  if(dragBtn>=0 && ["terrain","wall","wallT","platform","ladder","zone","entrance"].includes(state.tool)) apply(gx,gy,dragBtn===2);
+  if(dragBtn>=0 && ["eraser","terrain","wall","wallT","platform","ladder","zone","entrance"].includes(state.tool)) apply(gx,gy,dragBtn===2);
 });
 window.addEventListener("mouseup",()=>{ dragBtn=-1; panning=false; });
 cv.addEventListener("wheel",e=>{ e.preventDefault(); const r=cv.getBoundingClientRect(), mx=e.clientX-r.left, my=e.clientY-r.top;
@@ -249,6 +273,16 @@ function buildProp(){ const p=document.getElementById("prop"), t=state.tool, b=s
     const rf=row(`<label><input type="checkbox" id="pf" ${b.prismFixed?"checked":""}> 고정</label>`); rf.querySelector("#pf").onchange=e=>{ b.prismFixed=e.target.checked; if(S().prism)S().prism.fixed=b.prismFixed; };
   } else if(t==="platform"){
     const rf=row(`<label><input type="checkbox" id="tr" ${b.transmit?"checked":""}> 빛 투과(파랑) / 해제=차단(남색)</label>`); rf.querySelector("#tr").onchange=e=>b.transmit=e.target.checked;
+  } else if(t==="camera"){
+    const cam=S().camera||{}; const g=k=>cam[k]||0;
+    row(`<div class="small">플레이어 추적 카메라의 줌·이동 범위(스테이지별). 그리드에 청록 점선으로 범위가 표시됩니다.</div>`);
+    const numRow=(k,label)=>{ const r=row(`<label style="flex:1">${label}</label><input type="number" step="0.5" id="c_${k}" value="${g(k)}" style="width:60px">`); r.querySelector("#c_"+k).oninput=e=>setCam(k,+e.target.value||0); };
+    numRow("view_cells","세로 표시 칸수(0=기본)");
+    const rf=row(`<label><input type="checkbox" id="c_fw" ${cam.fit_width?"checked":""}> 가로 폭 맞춤(fit_width)</label>`); rf.querySelector("#c_fw").onchange=e=>setCam("fit_width",e.target.checked);
+    numRow("top_pad","상단 여유 칸");
+    numRow("bottom_pad","하단 여유 칸");
+    numRow("side_pad","좌우 여유 칸");
+    const rr=row(`<button id="c_reset" class="danger">카메라 기본값으로(제거)</button>`); rr.querySelector("#c_reset").onclick=()=>{ S().camera=null; buildProp(); draw(); };
   } else if(t==="terrain"){
     p.innerHTML=`<div class="small">칸을 클릭하면 그 열의 지형이 바닥(y=0)부터 그 높이까지 채워집니다. 우클릭=열 삭제.</div>`;
   } else {
@@ -256,11 +290,20 @@ function buildProp(){ const p=document.getElementById("prop"), t=state.tool, b=s
   }
 }
 function setAngle(a){ a=((a%360)+360)%360; state.brush.angle=a; if(state.tool==="mirror"&&state.sel!=null){ S().mirrors[state.sel].angle=a; } draw(); buildProp(); }
+function setCam(k,v){ const s=S(); if(!s.camera) s.camera={view_cells:0,fit_width:false,top_pad:0,bottom_pad:0,side_pad:0}; s.camera[k]=v; draw(); }
 function syncGrid(){ document.getElementById("gw").value=S().W; document.getElementById("gh").value=S().H; }
 
-document.getElementById("gw").onchange=e=>{ S().W=Math.max(4,Math.min(120,+e.target.value||30)); draw(); };
-document.getElementById("gh").onchange=e=>{ S().H=Math.max(4,Math.min(120,+e.target.value||15)); draw(); };
-document.getElementById("btnClear").onclick=()=>{ if(confirm(state.cur+"를 비울까요?")){ const W=S().W,H=S().H; state.stages[state.cur]=blankStage(); S().W=W; S().H=H; state.sel=null; draw(); } };
+// 그리드 크기: 입력 즉시 반영(oninput). 4~200칸.
+function setGrid(w,h){ const s=S(); if(w!=null&&!isNaN(w)&&w>0) s.W=Math.max(4,Math.min(200,Math.round(w))); if(h!=null&&!isNaN(h)&&h>0) s.H=Math.max(4,Math.min(200,Math.round(h))); document.getElementById("gw").value=s.W; document.getElementById("gh").value=s.H; draw(); }
+document.getElementById("gw").oninput=e=>setGrid(+e.target.value,null);
+document.getElementById("gh").oninput=e=>setGrid(null,+e.target.value);
+// 스테이지 비우기: confirm() 대화상자가 차단된 환경에서도 동작하도록 2회 클릭 확인 방식.
+let _clearArm=null;
+(function(){ const bc=document.getElementById("btnClear"); bc.onclick=()=>{
+  if(_clearArm){ clearTimeout(_clearArm); _clearArm=null; doClearStage(); bc.textContent="현재 스테이지 비우기"; bc.classList.remove("armed"); }
+  else { bc.textContent="정말 비우기? 다시 클릭"; bc.classList.add("armed"); _clearArm=setTimeout(()=>{ bc.textContent="현재 스테이지 비우기"; bc.classList.remove("armed"); _clearArm=null; }, 2500); }
+};})();
+function doClearStage(){ const W=S().W,H=S().H; state.stages[state.cur]=blankStage(); const n=S(); n.W=W; n.H=H; state.sel=null; draw(); buildProp(); }
 
 // ---------- 내보내기 / 불러오기 ----------
 function exportData(){ const out={ unit:{cell_px:40,unity_world_per_cell:1.0}, stages:{} };
@@ -280,11 +323,12 @@ function exportData(){ const out={ unit:{cell_px:40,unity_world_per_cell:1.0}, s
     st.entrance=[...s.entrance].map(unkey);
     st.terrain=Object.fromEntries(Object.entries(s.terrain).map(([c,h])=>[c,h]));
     st.wall=[...s.wall,...s.wallT].map(unkey);          // 빛통과벽도 벽 목록에 포함(+wall_transmit로 표시)
-    if(s.camera) st.camera=s.camera;
+    if(s.camera && !camDefault(s.camera)) st.camera=s.camera;   // 전부 기본값이면 생략
     out.stages[k]=st;
   }
   return out;
 }
+function camDefault(c){ return !c || ((c.view_cells||0)===0 && !c.fit_width && (c.top_pad||0)===0 && (c.bottom_pad||0)===0 && (c.side_pad||0)===0); }
 function groupLadders(set){ const byCol={}; for(const k of set){ const [x,y]=unkey(k); (byCol[x]??=[]).push(y); }
   return Object.entries(byCol).map(([c,ys])=>({col:+c,y_span:[Math.min(...ys),Math.max(...ys)]})); }
 
