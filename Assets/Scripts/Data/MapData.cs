@@ -9,6 +9,8 @@ namespace TowardTheStars.Data
     public class UnifiedData
     {
         [JsonProperty("unit")] public UnitData Unit;
+        // 진행 순서(선택). 있으면 MapLoader.stageOrder를 이 값으로 덮어쓴다 → 스테이지 개수·순서를 맵이 결정.
+        [JsonProperty("stage_order")] public string[] StageOrder;
         [JsonProperty("stages")] public Dictionary<string, StageData> Stages = new();
     }
 
@@ -41,6 +43,12 @@ namespace TowardTheStars.Data
         [JsonProperty("entrance")] public List<int[]> Entrance = new();            // 입장 통로: 좌측벽에 뚫는 구멍 셀(벽 생략)
 
         [JsonProperty("terrain")] public Dictionary<string, int> Terrain = new();
+        // 지형 칸별 타입 오버라이드: 키="x,y", 값="grass"|"dirt"|"indoor". 미지정 칸은 terrain_type_default.
+        [JsonProperty("terrain_type")] public Dictionary<string, string> TerrainType = new();
+        [JsonProperty("terrain_type_default")] public string TerrainTypeDefault = "dirt";
+
+        // 바닥에 떨어진 랜즈 아이템 위치(칸). null이면 없음. 플레이어가 F로 줍고 횃불에 장착.
+        [JsonProperty("lens_item")] public int[] LensItem;
 
         [JsonProperty("fixed_mirrors")] public List<string> FixedMirrors = new();
 
@@ -85,6 +93,8 @@ namespace TowardTheStars.Data
     {
         [JsonProperty("pos")] public int[] Pos;
         [JsonProperty("dir")] public string Dir;   // 화살표 ↙ ↑ ← → ↗ ↖ ↘ ↓
+        // 랜즈 장착 여부(기본 true=장착). false면 시작 시 빔을 발사하지 않는다(랜즈 아이템화 스테이지).
+        [JsonProperty("has_lens")] public bool HasLens = true;
     }
 
     public class GateData

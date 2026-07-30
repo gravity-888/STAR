@@ -25,15 +25,18 @@ Assets/Scripts/
             GateExit.cs       스테이지 이동 트리거(게이트 통과/입장통로 역주행)
   Light/    Beam.cs           Beam 구조체 + IBeamHit 인터페이스
             BeamTracer.cs     빛 추적(스택 기반, 매 프레임) + LineRenderer 렌더
-  Objects/  LightSource.cs    광원(랜즈): 빛 발사
+  Objects/  LightSource.cs    광원(랜즈): 빛 발사(Emitting=false면 미발사)
             Mirror.cs         거울: 반사(회전 가능)
             Prism.cs          프리즘: 분기(0.5+0.5)
             GateDetector.cs   게이트 수광부: 광량 누적·개방 판정
             GateDoor.cs       게이트 문: 열림/닫힘(위로 슬라이드)
             Ladder.cs         사다리: 등반 감지용 마커
             BeamTransparent.cs 마커: 이 콜라이더는 빛이 통과(발판)
+            TorchMount.cs     횃불 랜즈 장착부: 장착/해제(발사 ON/OFF)
+            LensItem.cs       바닥 랜즈 아이템: 줍기 대상 마커
   Player/   PlayerController.cs 이동·점프·사다리 등반
             MirrorInteractor.cs Q/E로 가까운 거울 회전
+            LensInteractor.cs F로 랜즈 줍기/장착/해제
 ```
 
 **핵심 규약(어기면 퍼즐이 깨짐)**
@@ -59,15 +62,17 @@ Assets/Scripts/
 
 **역할**: `stages_*.json`을 C# 객체로 역직렬화하는 순수 데이터 모델(Newtonsoft.Json 속성 매핑). 로직 없음.
 
-- **`UnifiedData`**: 최상위. `unit`(단위 정보)과 `stages`(스테이지 딕셔너리, 키 `"stage1"`~`"stage4"`).
+- **`UnifiedData`**: 최상위. `unit`(단위 정보), **`StageOrder`(`stage_order`, 선택 — 진행 순서·개수 배열)**, `stages`(스테이지 딕셔너리, 키 `"stage1"`~). 스테이지 개수는 이 딕셔너리·`stage_order`로 결정되며 코드에 하드코딩되지 않는다.
 - **`StageData`**: 한 스테이지의 전부.
   - `Grid`(W·H), `Camera`(스테이지별 카메라 오버라이드), `Source`(광원), `Prism`(없으면 null), `Gate`(수광부 위치).
   - `Mirrors`·`Platforms`·`Decoys`·`Ladders` 리스트, `Spawn`/`ExitSpawn`(정/역방향 스폰), `GateOpenZone`(문 칸들), `WallTransmit`(빛 통과 벽), `Entrance`(좌측벽 구멍), `Terrain`(열→높이).
+  - **지형 타입(신규)**: `TerrainType`(`"x,y"→"grass"|"dirt"|"indoor"` 칸별 오버라이드)·`TerrainTypeDefault`(미지정 칸 기본, 기본값 `"dirt"`). 지형 **위치**는 여전히 `Terrain`(열→높이)이 정하고, 이건 **칸별 시각 타입만** 지정.
+  - **랜즈 아이템(신규)**: `LensItem`(`[x,y]`, 바닥에 떨어진 시작 랜즈 위치. null=없음).
   - **`[JsonExtensionData] Extra`**: 매핑 안 된 나머지 JSON 키를 통째로 수집. `wall`, `wall_x25`, `wall_x41` 등 스테이지마다 이름이 다른 벽 키를 유연하게 처리하기 위한 장치.
   - **`AllWalls()`**: `Extra`에서 `"wall"`로 시작하는 모든 키를 훑어 벽 셀 좌표를 열거. → 벽 키 이름이 무엇이든 전부 벽으로 취급.
-- **하위 모델**: `GridData`, `CameraSettings`(view_cells·fit_width·pad), `Endpoint`(pos+dir 화살표), `GateData`, `PrismData`(in/out 방향·fixed), `MirrorData`(id·pos·angle_deg·fixed), `PlatformData`(cells·transmit·MISSING), `DecoyData`, `LadderData`(col·y_span).
+- **하위 모델**: `GridData`, `CameraSettings`(view_cells·fit_width·pad), `Endpoint`(pos+dir 화살표 **+ `HasLens`** 기본 true), `GateData`, `PrismData`(in/out 방향·fixed), `MirrorData`(id·pos·angle_deg·fixed), `PlatformData`(cells·transmit·MISSING), `DecoyData`, `LadderData`(col·y_span).
 
-**원리 노트**: `transmit` 기본값이 `true`(발판은 기본 빛 투과), `MISSING`은 미설계 발판 스킵 플래그. JSON에 없는 필드는 C# 기본값을 쓴다.
+**원리 노트**: `transmit` 기본값이 `true`(발판은 기본 빛 투과), `MISSING`은 미설계 발판 스킵 플래그. `Endpoint.HasLens` 기본 `true`(=기존 맵은 랜즈 장착 상태). JSON에 없는 필드는 C# 기본값을 쓴다.
 
 ---
 
@@ -100,7 +105,7 @@ Assets/Scripts/
 - **`Trace()`** — 핵심 알고리즘:
   1. `queriesStartInColliders=false`(시작점이 자기 콜라이더 안이어도 무시), `queriesHitTriggers=false`(사다리 Trigger는 빛 통과), `SyncTransforms()`.
   2. 모든 `GateDetector.BeginFrame()`으로 누적만 0 초기화(상태·색은 유지).
-  3. 모든 `LightSource.Emit()`을 **스택에 push**(초기 광선). 소스/게이트는 `??=`로 1회만 검색해 캐시.
+  3. `Emitting`인 `LightSource.Emit()`을 **스택에 push**(초기 광선). **미발사(랜즈 미장착) 광원은 건너뜀.** 소스/게이트는 `??=`로 1회만 검색해 캐시(토글은 캐시된 객체의 `Emitting`을 매 프레임 확인).
   4. **스택 루프**(프리즘 분기 때문에 스택 기반):
      - 빔을 pop → 깊이 초과면 스킵.
      - **투과 스캔**: `Raycast`가 맞은 콜라이더가 `IBeamHit`이 없고 `BeamTransparent`가 있으면(=발판) 그 지점 조금 너머로 전진해 다시 Raycast(같은 발판 재검출 방지). 광학 오브젝트/벽을 만날 때까지 반복.
@@ -120,7 +125,8 @@ Assets/Scripts/
 **역할**: 랜즈/광원. 고정 방향으로 빛 1개를 발사. 콜라이더 없음(빛 시작점).
 
 - **`Init(dir, intensity)`**: 방향(정규화)·세기 주입.
-- **`Emit()`**: 현재 위치·방향·세기로 `Beam`을 만들어 반환. BeamTracer가 매 프레임 호출.
+- **`Emitting`**(bool, 기본 true): 발사 여부. **false면 `BeamTracer`가 이 광원을 건너뛴다**(랜즈 미장착 = 빔 없음). `TorchMount`가 장착/해제로 토글.
+- **`Emit()`**: 현재 위치·방향·세기로 `Beam`을 만들어 반환. BeamTracer가 매 프레임 호출(단 `Emitting`인 광원만).
 
 ---
 
@@ -179,10 +185,12 @@ Assets/Scripts/
 
 ---
 
-## 10. Objects / `Ladder.cs` · `BeamTransparent.cs`
+## 10. Objects / `Ladder.cs` · `BeamTransparent.cs` · `TorchMount.cs` · `LensItem.cs`
 
 - **`Ladder`**: 등반 통로 마커. `height`만 보관. 실제 등반 로직은 `PlayerController`. 콜라이더는 Trigger라 빛은 통과.
 - **`BeamTransparent`**: 빈 마커 컴포넌트. 발판(transmit=true)에 붙어 "이 솔리드 콜라이더는 빛이 통과"를 표시. `BeamTracer`가 이 마커를 보고 히트를 건너뛴다. 벽은 이 마커가 없어 빛을 막는다.
+- **`TorchMount`**: 횃불의 랜즈 장착부(랜즈 아이템화 스테이지에만 부착). `Init(source, lensVisual, mounted)`로 광원·랜즈 시각·초기 장착 상태를 받는다. `SetMounted(bool)`/`Toggle()` = **장착 시 `LightSource.Emitting=true`+랜즈 시각 표시 / 해제 시 false+숨김**. 플레이어의 `LensInteractor`가 F로 호출.
+- **`LensItem`**: 바닥에 떨어진 시작 랜즈(줍기 대상) 마커. `Taken` 플래그 + `Take()`(획득 시 비활성). 트리거 콜라이더는 `MapLoader.BuildLensItem`이 붙이고, 실제 획득(F키)은 `LensInteractor`가 처리.
 
 ---
 
@@ -198,18 +206,19 @@ Assets/Scripts/
 - 게이트: `gateExitInset`(통과 판정을 안쪽으로 넓히는 정도).
 - 아트: `artScale`(표시 배율, 기본 2 — **콜라이더·판정 불변, 보이는 크기만**).
 - 거울: `mirrorArtAngleOffset`(아트 기본각 90), `randomizeMirrors`, `mirrorRandomSteps`(2=±45°).
-- 프리팹 슬롯 16종(비면 색 사각형 폴백).
+- 프리팹 슬롯 **21종**(비면 색 사각형 폴백). 지형 3종(`terrainGrass/Dirt/Indoor` + 공통 폴백 `terrainPrefab`), 거울 거치대 2종(`mirrorMountPrefab` 바닥 / `mirrorMountCeilingPrefab` 천장 10×80) 포함.
 - 상수: `Z_*`(정렬순서), `PLATFORM_*`(발판 기하 — 윗면을 칸 위 모서리 y+0.5에 맞춰 지형과 높이 일치).
 
 ### 11.2 생명주기
-- **`Start()`**: `useGameFlow`면 `GameManager.Bootstrap(this)`(타이틀부터), 아니면 `buildOnStart`로 즉시 Build.
+- **`Start()`**: **`ApplyStageOrderFromMap()`**(맵의 `stage_order`로 `stageOrder` 확정 — StartGame이 `stageOrder[0]`을 쓰기 전에) 후, `useGameFlow`면 `GameManager.Bootstrap(this)`(타이틀부터), 아니면 `buildOnStart`로 즉시 Build.
+- **`ApplyStageOrderFromMap()`**: mapFile을 파싱해 `stage_order`가 있으면 `stageOrder`에 반영(인스펙터 값은 폴백). Build에서도 파싱 후 동일 적용. → **스테이지 개수·순서를 맵이 결정**, 씬 인스펙터 수정 불필요.
 - **`Update()`**: 전환/일시정지/타이틀(ControlsLocked) 중엔 무시. `R`=Restart, `P`=SolveAllMirrors, `1~4`=GoToIndex.
 - **`Build()`** — 핵심 절차:
   1. `mapFile` 파싱 → 스테이지 찾기(실패 시 에러 로그).
   2. `Clear()` + `_mirrors.Clear()` + `Level_{stageKey}` 루트 생성.
   3. **비광학**: BuildTerrain → Walls → Platforms → Ladders.
   4. **광학**: BuildLens → Mirrors → Prism → Gate.
-  5. 기타: Decoys → Entrance(역주행 트리거) → Spawn → Player.
+  5. 기타: Decoys → **BuildLensItem**(바닥 랜즈) → Entrance(역주행 트리거) → Spawn → Player.
   6. `BeamTracer` 생성 후 1회 `Trace()`(에디트 모드 미리보기 포함).
   7. `randomizeMirrors`면 **`EnsureUnsolvedStart`**: 랜덤이 우연히 게이트를 열면 닫힌 배치가 나올 때까지 재추첨(최대 20회) → 항상 "안 풀린 상태"로 시작.
   8. `SetupCamera`.
@@ -229,16 +238,17 @@ Assets/Scripts/
 - **`EnsureUnsolvedStart(tracer)`**: 게이트가 열려 있으면 거울을 다시 랜덤화하고 재추적, 닫힐 때까지(최대 20회). 로컬 함수 `AnyOpen()`으로 판정.
 
 ### 11.5 비광학 배치
-- **`BuildTerrain`**: `terrain` 딕셔너리(열→높이)로 0..높이 칸을 솔리드 타일로 채움. `fitToScale`로 1×1칸에 정확히 맞춤(이웃과 연결). 빛 차단은 벽 담당.
+- **`BuildTerrain`**: `terrain` 딕셔너리(열→높이)로 0..높이 칸을 솔리드 타일로 채움. **칸마다 `TerrainTypeAt`(terrain_type 오버라이드 → 기본 dirt)로 타입을 정해 `TerrainStyle`이 잔디/땅/실내 프리팹·색 선택**(타입 슬롯 비면 `terrainPrefab`, 그것도 비면 색 사각형). `fitToScale`로 1×1칸에 정확히 맞춤(이웃과 연결). 빛 차단은 벽 담당.
 - **`BuildWalls`**: `AllWalls()` 순회. `entrance` 칸은 벽 생략(구멍). `wall_transmit` 칸은 반투명 + `BeamTransparent`(빛만 통과). 나머지는 불투명 벽(빔 정지).
 - **`BuildPlatforms`**: 발판 셀마다 얇은(0.4) 솔리드. **윗면을 y+0.5로 올려 지형과 높이 일치**(`PLATFORM_CY`). `transmit`면 파랑 + `BeamTransparent`, 아니면 남색(빛 차단). `fitToScale`로 가로 1칸 정합.
 - **`BuildLadders`**: `y_span`으로 사다리 세로 구간 계산. **지형이 채운 칸은 건너뛰어 땅 위에만** 생성. Trigger 콜라이더(0.6×h) + `Ladder`. 프리팹은 `BuildLadderSegments`로 1칸 조각 반복.
 
 ### 11.6 광학 배치
-- **`BuildLens`**: 광원 생성 + `LightSource.Init`. **횃불(`torchPrefab`)을 바닥에 세움**(`PlaceOnSurface`). 색 사각형 모드에선 방향 표시 점을 추가(프리팹 모드에선 생략).
-- **`BuildMirrors`**: 거울마다 솔리드 루트 + `"visual"`. 아트 기본각 보정은 프리팹에만. `Mirror.Init(정답각)` 후 `randomizeMirrors`면 랜덤화. 회전 가능한 것만 `_mirrors`에 등록.
+- **`BuildLens`**: 광원 생성 + `LightSource.Init`. **`source.has_lens`로 `Emitting` 결정**(false면 시작 시 빔 없음). **횃불(`torchPrefab`)을 바닥에 세움**(`PlaceOnSurface`, 랜즈 유무와 무관하게 항상). 랜즈 시각(`"visual"`)은 **장착 시에만 표시**. `lens_item`이 있는 스테이지면 `TorchMount`를 붙여 F 장착/해제 활성화, 없으면 랜즈 고정(현행). 색 사각형 모드에선 장착 시 방향 표시 점 추가.
+- **`BuildLensItem`**: `lens_item`이 있으면 그 칸에 트리거 콜라이더(0.7×0.7) + `LensItem` 마커 + 랜즈 시각 배치(줍기 대상).
+- **`BuildMirrors`**: 거울마다 솔리드 루트 + `"visual"`. 아트 기본각 보정은 프리팹에만. `Mirror.Init(정답각)` 후 `randomizeMirrors`면 랜덤화. 회전 가능한 것만 `_mirrors`에 등록. **거치대**: `SurfaceBelow`/`SurfaceAbove`로 위·아래 중 **가까운 지지면**을 골라 `PlaceOnSurface` — 아래=바닥 거치대(세움), 위=천장 거치대(전용 아트면 정립, 없으면 바닥 아트를 뒤집어 폴백).
 - **`BuildPrism`**: 프리즘 루트 + 시각(45°는 플레이스홀더 마름모용) + `Prism.Init(출력방향들)`.
-- **`BuildGate`**: 수광부 루트 + 시각(→ `GateDetector.visual`) + `GateDetector`. 이어 `BuildGateDoor`·`BuildGateExit`.
+- **`BuildGate`**: 수광부 루트 + 시각(→ `GateDetector.visual`, **1칸(40×40)에 `fitToScale`**) + `GateDetector`. 이어 `BuildGateDoor`·`BuildGateExit`.
 - **`BuildGateExit`**: 개폐존 바운딩 박스로 Trigger 생성. **얇은 축(통로 방향)을 그리드 중심 쪽으로 `gateExitInset`만큼 확장** → 표면에 붙기 전/붙은 채로도 통과 판정. `GateExit.Init(det, this, +1)`.
 - **`BuildEntrance`**: 입장 통로에 역방향 Trigger(`GateExit.Init(null, this, -1)`) → 왼쪽으로 나가면 이전 스테이지.
 - **`BuildGateDoor`**: 개폐존을 **하나의 긴 블럭**(콜라이더 1 + 시각 1)으로. 프리팹은 `InstantiateGateDoor`로 존에 맞춤(가로형 90° 회전). `door.Register(box, sr, h)` + `SetOpenImmediate(false)` + 수광부 `OnStateChanged` 구독.
@@ -246,7 +256,7 @@ Assets/Scripts/
 ### 11.7 기타 배치
 - **`BuildDecoys`**: 가짜 광학 표식(45° 마름모).
 - **`BuildSpawn`**: 스폰 표식(선택). `EffectiveSpawn` 위치.
-- **`BuildPlayer`**: 스폰에 플레이어 액터 생성. BoxCollider(0.6×0.9, 마찰0·모서리라운딩)+Rigidbody2D(중력3)+`PlayerController`(리스폰 경계 주입)+`MirrorInteractor`. 카메라 추적용 Transform 반환.
+- **`BuildPlayer`**: 스폰에 플레이어 액터 생성. BoxCollider(0.6×0.9, 마찰0·모서리라운딩)+Rigidbody2D(중력3)+`PlayerController`(리스폰 경계 주입)+`MirrorInteractor`+`LensInteractor`(`carryVisualPrefab=lensPrefab` 주입). 카메라 추적용 Transform 반환.
 
 ### 11.8 시각/프리팹 유틸 (프리팹 seam의 핵심)
 - **`SolidRoot`**: 솔리드 콜라이더 루트(시각은 자식으로 분리).
@@ -257,8 +267,9 @@ Assets/Scripts/
 - **`InstantiateFitted`**: 타일용. 원본 크기 무관하게 **지정 칸 크기에 정확히 맞춤**(배율 미적용 — 이웃과 빈틈·겹침 없이 연결).
 - **`InstantiateGateDoor`**: 문용. 원본 무관하게 **개폐존에 맞춤**, 가로형 존은 90° 눕혀 재사용.
 - **`BuildLadderSegments`**: 1칸 조각을 세로로 h개 쌓음(균일 스케일 → 비율 유지, 늘어나지 않음).
-- **`PlaceOnSurface`**: 부속 아트(횃불)를 원본 크기(×artScale)로, **밑면이 지지면에 닿도록** 배치.
+- **`PlaceOnSurface`**: 부속 아트(횃불·거치대)를 원본 크기(×artScale)로 지지면에 배치. `ceiling=false`면 **밑면이 아래 지지면**에, `ceiling=true`면 **윗면이 위 지지면(천장)**에 닿도록. `flip=true`면 세로 반전(바닥 아트를 천장에 재사용할 때).
 - **`SurfaceBelow`**: 지정 칸에서 아래로 가장 가까운 지지면(지형 t+0.5 / 발판 cy+0.5)의 윗면 y. 없으면 NaN.
+- **`SurfaceAbove`**: 지정 칸에서 위로 가장 가까운 발판의 아랫면 y(천장). 없으면 NaN. (거울 거치대의 바닥/천장 자동 판별에 사용)
 - **`Square`**: 1×1 흰 스프라이트(정적 캐시). 모든 색 사각형의 원본.
 
 ### 11.9 카메라
@@ -336,6 +347,19 @@ Assets/Scripts/
 
 ---
 
+## 18. Player / `LensInteractor.cs`
+
+**역할**: 플레이어의 랜즈 조작기(랜즈 아이템화 스테이지에서만 의미). `F`키 **문맥 감응**: ①반경(기본 2.5칸) 안 횃불이 있으면 장착/해제 토글 ②아니면 겹친 바닥 랜즈를 줍기.
+
+- **`Update`**: ControlsLocked면 무시. `F` 눌림 시 — `NearestMount`가 있으면 그 `TorchMount`를 토글(**장착 시 소지 소모, 해제 시 회수**), 없고 `_touching`(겹친 `LensItem`)이 있고 미소지면 `Take()`로 줍기. 그때마다 `UpdateCarryVisual`.
+- **`NearestMount`**: 반경 내 최근접 `TorchMount`(F 누른 순간에만 검색).
+- **`UpdateCarryVisual`**: 소지 중이면 `carryVisualPrefab`(=`lensPrefab`) 사본을 머리 위에 표시(정렬순서 +20). 프리팹 없으면 표시 없음.
+- **`OnTriggerEnter/Exit2D`**: 바닥 `LensItem`과의 겹침을 `_touching`에 기록(플레이어 몸 콜라이더 vs 아이템 트리거).
+
+**원리 노트**: `Emit` 게이팅은 `LightSource.Emitting`이, 시각(랜즈 표시)은 `TorchMount`가 담당하므로, 이 조작기는 "언제 토글하느냐"만 안다. 빔은 `BeamTracer`가 매 프레임 재추적하므로 토글 즉시 다음 프레임에 반영된다. 다른 스테이지엔 `TorchMount`/`LensItem`이 없어 F가 무반응(현행 동작 보존).
+
+---
+
 ## 부록 A. 데이터 흐름 요약
 
 ```mermaid
@@ -364,6 +388,7 @@ flowchart TD
 | 광학 연산 | `LightSource`·`Mirror`·`Prism`·`GateDetector` |
 | 게이트 문 개폐 | `GateDoor` |
 | 스테이지 이동 | `GateExit` → `MapLoader.GoTo*` |
-| 플레이어 조작 | `PlayerController`·`MirrorInteractor` |
+| 플레이어 조작 | `PlayerController`·`MirrorInteractor`·`LensInteractor` |
+| 랜즈 획득·장착(빔 게이팅) | `LensInteractor`·`TorchMount`·`LensItem` (+ `LightSource.Emitting`) |
 | 카메라 | `CameraFollow` (+ `MapLoader.SetupCamera`) |
 | 게임 흐름·UI | `GameManager` (+ `ScreenFader`) |

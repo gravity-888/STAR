@@ -840,8 +840,10 @@
           22,
           2
         ],
-        "dir": "↑"
+        "dir": "↑",
+        "has_lens": false
       },
+      "lens_item": [8, 1],
       "prism": null,
       "gate": {
         "pos": [

@@ -79,20 +79,22 @@
 // ---------- 상수 ----------
 const ARROWS = ["↖","↑","↗","←","·","→","↙","↓","↘"];          // 3x3 방향 그리드(·=없음)
 const ARROW_VEC = { "→":[1,0],"←":[-1,0],"↑":[0,1],"↓":[0,-1],"↗":[1,1],"↖":[-1,1],"↘":[1,-1],"↙":[-1,-1] };
-const STAGES = ["stage1","stage2","stage3","stage4"];
+const DEFAULT_STAGES = ["stage1","stage2","stage3","stage4"];   // 초기 스테이지 목록(가변: state.stageList)
 const DEFAULT_VIEW = 16;   // MapLoader.cameraViewCells 기본값(세로 표시 칸수)
 
 // 팔레트: id, 한글, 종류, 색
 const TOOLS = [
   { id:"eraser",   label:"지우개(전체 삭제)", kind:"eraser", color:"#8b93ad" },
-  { id:"terrain",  label:"지형(바닥)",   kind:"terrain", color:"#5a4230" },
+  { id:"terrain",  label:"지형(바닥·기본 땅)", kind:"terrain", color:"#5a4230" },
+  { id:"tType",    label:"지형 타입칠(잔디/땅/실내)", kind:"terrainType", color:"#3a9a48" },
   { id:"wall",     label:"벽",           kind:"cell",    color:"#33333c" },
   { id:"wallT",    label:"빛 통과 벽",   kind:"cell",    color:"#738cb3" },
   { id:"platform", label:"발판",         kind:"cell",    color:"#4d8ef2" },
   { id:"ladder",   label:"사다리",       kind:"cell",    color:"#cc9a4d" },
   { id:"zone",     label:"게이트 문(개폐존)", kind:"cell", color:"#c85a4d" },
   { id:"entrance", label:"입장 통로",    kind:"cell",    color:"#9b6cf2" },
-  { id:"source",   label:"광원(랜즈)",   kind:"single",  color:"#ffe64d" },
+  { id:"source",   label:"광원(횃불)",   kind:"single",  color:"#ffe64d" },
+  { id:"lensItem", label:"시작 랜즈(바닥)", kind:"single",  color:"#ffd24d" },
   { id:"gate",     label:"게이트 수광부",kind:"single",  color:"#4de676" },
   { id:"mirror",   label:"거울",         kind:"mirror",  color:"#8ce6ff" },
   { id:"prism",    label:"프리즘",       kind:"single",  color:"#f272f2" },
@@ -105,17 +107,23 @@ const TOOLS = [
 // ---------- 상태 ----------
 function blankStage(){ return {
   W:30, H:15, terrain:{},                 // terrain: col->height
+  terrainType:{},                         // "x,y"->("grass"|"dirt"|"indoor"). 미지정 칸=기본 땅(dirt)
   wall:new Set(), wallT:new Set(), platT:new Set(), platS:new Set(),
   ladder:new Set(), zone:new Set(), entrance:new Set(),
   mirrors:[], decoys:[],
   source:null, gate:null, prism:null, spawn:null, exitSpawn:null, camera:null,
+  lensItem:null,                          // 바닥에 떨어진 시작 랜즈(줍기 대상). null=없음
 };}
+const TCOLOR = { grass:"#3a9a48", dirt:"#5a4230", indoor:"#6a6a78" };
+function terrainTypeAt(s,x,y){ return s.terrainType[key(x,y)] || "dirt"; }
+function terrainColor(s,x,y){ return TCOLOR[terrainTypeAt(s,x,y)] || TCOLOR.dirt; }
 const state = {
-  stages: Object.fromEntries(STAGES.map(k=>[k, blankStage()])),
+  stageList: [...DEFAULT_STAGES],                              // 현재 스테이지 키 순서(추가/삭제로 가변)
+  stages: Object.fromEntries(DEFAULT_STAGES.map(k=>[k, blankStage()])),
   cur:"stage1", tool:"terrain",
   view:{ox:60, oy:-40, cell:26},          // oy는 아래(원점) 여백 — draw에서 y-flip
   aspect:16/9,                            // 게임 화면 가로/세로 비율(카메라 계산용, 저장 안 됨)
-  brush:{ angle:45, dir:"↙", fixed:false, transmit:true, prismOut:new Set(["→","↗"]), prismFixed:false },
+  brush:{ angle:45, dir:"↙", fixed:false, transmit:true, prismOut:new Set(["→","↗"]), prismFixed:false, tType:"grass", hasLens:true },
   sel:null,                                // 선택된 거울 인덱스
 };
 const S = ()=>state.stages[state.cur];
@@ -156,8 +164,8 @@ function draw(){
   ctx.clearRect(0,0,cv.width,cv.height);
   // 그리드 배경
   for(let gx=0; gx<s.W; gx++) for(let gy=0; gy<s.H; gy++){ const [x,y]=toScreen(gx,gy); ctx.fillStyle=((gx+gy)&1)?"#0f1219":"#12151d"; ctx.fillRect(x,y,c,c); }
-  // 지형
-  ctx.fillStyle="#5a4230"; for(const [col,h] of Object.entries(s.terrain)){ const cx=+col; for(let gy=0; gy<=h; gy++) fillCell(cx,gy,"#5a4230"); }
+  // 지형(칸별 타입 색: 잔디/땅/실내)
+  for(const [col,h] of Object.entries(s.terrain)){ const cx=+col; for(let gy=0; gy<=h; gy++) fillCell(cx,gy, terrainColor(s,cx,gy)); }
   // 벽/발판/사다리/존/입장
   for(const k of s.wall)  fillCell(...unkey(k),"#33333c");
   for(const k of s.wallT) fillCell(...unkey(k),"#738cb3aa");
@@ -176,7 +184,8 @@ function draw(){
   for(const d of s.decoys) marker(d,"#e65a5a","·");
   if(s.gate) marker(s.gate,"#4de676","G");
   if(s.prism){ marker(s.prism,"#f272f2","P"); for(const a of s.prism.out) arrowGlyph(s.prism,a,"#f272f2"); }
-  if(s.source){ marker(s.source,"#ffe64d","◎"); arrowGlyph(s.source,s.source.dir,"#ffe64d"); }
+  if(s.source){ const mounted=s.source.hasLens!==false; marker(s.source, mounted?"#ffe64d":"#8a7a30", "◎"); if(mounted) arrowGlyph(s.source,s.source.dir,"#ffe64d"); }
+  if(s.lensItem) marker(s.lensItem,"#ffd24d","◇");
   s.mirrors.forEach((m,i)=> drawMirror(m,i));
   // 카메라 도구 선택 시: ①레벨경계(±패드) ②카메라가 비추는 화면 크기 ③카메라 중심이 이동 가능한 최대 범위
   if(state.tool==="camera"){ const cc=cameraCalc(s);
@@ -203,13 +212,16 @@ function apply(gx,gy,erase){
     case "eraser":  eraseAll(gx,gy); break;                 // 종류 무관 그 칸의 모든 요소 삭제
     case "camera":  break;                                  // 배치 아님(속성 패널에서 설정)
     case "terrain": if(erase) delete s.terrain[gx]; else s.terrain[gx]=gy; break;
+    // 지형 타입칠: 지형이 있는 칸에만 타입 오버라이드 설정. 우클릭=기본(땅)으로 되돌림.
+    case "tType": if(s.terrain[gx]!=null && gy<=s.terrain[gx]){ if(erase) delete s.terrainType[k]; else s.terrainType[k]=b.tType; } break;
     case "wall":    toggleSet(s.wall,k,erase); s.wallT.delete(k); break;
     case "wallT":   toggleSet(s.wallT,k,erase); s.wall.delete(k); break;
     case "platform": if(erase){s.platT.delete(k); s.platS.delete(k);} else { (b.transmit?s.platT:s.platS).add(k); (b.transmit?s.platS:s.platT).delete(k);} break;
     case "ladder":  toggleSet(s.ladder,k,erase); break;
     case "zone":    toggleSet(s.zone,k,erase); break;
     case "entrance":toggleSet(s.entrance,k,erase); break;
-    case "source":  s.source= erase?null:{x:gx,y:gy,dir:b.dir}; break;
+    case "source":  s.source= erase?null:{x:gx,y:gy,dir:b.dir,hasLens:b.hasLens}; break;
+    case "lensItem":s.lensItem= erase?null:{x:gx,y:gy}; break;
     case "gate":    s.gate= erase?null:{x:gx,y:gy}; break;
     case "spawn":   s.spawn= erase?null:{x:gx,y:gy}; break;
     case "exitSpawn": s.exitSpawn= erase?null:{x:gx,y:gy}; break;
@@ -223,6 +235,8 @@ function toggleSet(set,k,erase){ if(erase) set.delete(k); else set.add(k); }
 // 지우개: 그 칸에 있는 모든 종류의 요소를 삭제(선택 도구와 무관).
 function eraseAll(gx,gy){ const s=S(), k=key(gx,gy);
   if(s.terrain[gx]!=null && gy<=s.terrain[gx]){ if(gy<=0) delete s.terrain[gx]; else s.terrain[gx]=gy-1; }  // 지형은 열 높이라 이 칸 위로 잘라냄
+  delete s.terrainType[k];
+  if(s.lensItem&&s.lensItem.x===gx&&s.lensItem.y===gy) s.lensItem=null;
   s.wall.delete(k); s.wallT.delete(k); s.platT.delete(k); s.platS.delete(k); s.ladder.delete(k); s.zone.delete(k); s.entrance.delete(k);
   if(s.source&&s.source.x===gx&&s.source.y===gy) s.source=null;
   if(s.gate&&s.gate.x===gx&&s.gate.y===gy) s.gate=null;
@@ -248,7 +262,7 @@ cv.addEventListener("mousedown",e=>{ const r=cv.getBoundingClientRect(), mx=e.cl
 window.addEventListener("mousemove",e=>{ const r=cv.getBoundingClientRect(), mx=e.clientX-r.left, my=e.clientY-r.top;
   const [gx,gy]=toCell(mx,my); document.getElementById("readout").textContent = inBounds(gx,gy)?`셀 (${gx}, ${gy})`:"—";
   if(panning){ state.view.ox+=mx-last[0]; state.view.oy-=my-last[1]; last=[mx,my]; draw(); return; }
-  if(dragBtn>=0 && ["eraser","terrain","wall","wallT","platform","ladder","zone","entrance"].includes(state.tool)) apply(gx,gy,dragBtn===2);
+  if(dragBtn>=0 && ["eraser","terrain","tType","wall","wallT","platform","ladder","zone","entrance"].includes(state.tool)) apply(gx,gy,dragBtn===2);
 });
 window.addEventListener("mouseup",()=>{ dragBtn=-1; panning=false; });
 cv.addEventListener("wheel",e=>{ e.preventDefault(); const r=cv.getBoundingClientRect(), mx=e.clientX-r.left, my=e.clientY-r.top;
@@ -268,10 +282,22 @@ function buildPalette(){ const el=document.getElementById("palette"); el.innerHT
     b.onclick=()=>{ state.tool=t.id; state.sel=null; buildPalette(); buildProp(); }; el.appendChild(b);
   }
 }
+let _delStageArm=false;
 function buildTabs(){ const el=document.getElementById("stageTabs"); el.innerHTML="";
-  for(const k of STAGES){ const b=document.createElement("button"); b.className="tab"+(k===state.cur?" active":""); b.textContent=k.replace("stage","S");
+  for(const k of state.stageList){ const b=document.createElement("button"); b.className="tab"+(k===state.cur?" active":""); b.textContent=k.replace("stage","S");
     b.onclick=()=>{ state.cur=k; state.sel=null; syncGrid(); buildTabs(); buildProp(); draw(); }; el.appendChild(b);
   }
+  const add=document.createElement("button"); add.className="tab"; add.textContent="＋"; add.title="스테이지 추가"; add.onclick=addStage; el.appendChild(add);
+  if(state.stageList.length>1){ const del=document.createElement("button"); del.className="tab"+(_delStageArm?" armed":""); del.textContent=_delStageArm?"삭제?":"－"; del.title="현재 스테이지 삭제(다시 클릭 확인)"; del.onclick=removeCurrentStage; el.appendChild(del); }
+}
+// 스테이지 추가: 비어 있는 가장 작은 번호로 stageN 생성.
+function addStage(){ let n=1; while(state.stageList.includes("stage"+n)) n++; const k="stage"+n; state.stageList.push(k); state.stages[k]=blankStage(); state.cur=k; state.sel=null; syncGrid(); buildTabs(); buildProp(); draw(); }
+// 현재 스테이지 삭제: 2회 클릭 확인(실수 방지). 최소 1개는 남긴다.
+function removeCurrentStage(){ if(state.stageList.length<=1) return;
+  if(!_delStageArm){ _delStageArm=true; buildTabs(); setTimeout(()=>{ _delStageArm=false; buildTabs(); },2500); return; }
+  _delStageArm=false;
+  const k=state.cur, i=state.stageList.indexOf(k); state.stageList.splice(i,1); delete state.stages[k];
+  state.cur=state.stageList[Math.max(0,i-1)]; state.sel=null; syncGrid(); buildTabs(); buildProp(); draw();
 }
 function arrowPicker(selName, current, onPick){ const wrap=document.createElement("div"); wrap.className="arrows";
   for(const a of ARROWS){ const b=document.createElement("button"); b.textContent=a; const on=(selName==="multi")?current.has(a):(current===a); if(a!=="·"&&on) b.className="on";
@@ -291,6 +317,20 @@ function buildProp(){ const p=document.getElementById("prop"), t=state.tool, b=s
     p.lastChild.textContent="거울을 클릭하면 선택돼 각도를 수정합니다. 우클릭=삭제.";
   } else if(t==="source"){
     row(`<label>발사 방향</label>`); p.appendChild(arrowPicker("single",b.dir,a=>{ if(a==="·")return; b.dir=a; if(S().source)S().source.dir=a; draw(); buildProp(); }));
+    const cur = S().source ? (S().source.hasLens!==false) : b.hasLens;
+    const rh=row(`<label><input type="checkbox" id="hl" ${cur?"checked":""}> 시작 시 랜즈 장착(빔 발사)</label>`);
+    rh.querySelector("#hl").onchange=e=>{ b.hasLens=e.target.checked; if(S().source) S().source.hasLens=e.target.checked; draw(); };
+    p.appendChild(document.createElement("div")).className="small";
+    p.lastChild.textContent="광원=횃불. 해제하면 시작 시 빔이 없고, 플레이어가 '시작 랜즈'를 주워 F로 장착해야 발사됩니다(게임에선 횃불이 바닥에 자동으로 섬).";
+  } else if(t==="lensItem"){
+    p.innerHTML=`<div class="small">바닥에 떨어진 시작 랜즈 위치. 플레이어가 닿아 F로 줍고, 횃불 근처에서 F로 장착/해제합니다. 좌클릭=배치, 우클릭=삭제.</div>`;
+  } else if(t==="tType"){
+    row(`<label>지형 타입(칠할 종류)</label>`);
+    const wrap=document.createElement("div"); wrap.className="arrows";
+    for(const [v,lab] of [["grass","잔디"],["dirt","땅"],["indoor","실내"]]){ const bt=document.createElement("button"); bt.textContent=lab; if(b.tType===v) bt.className="on"; bt.onclick=()=>{ b.tType=v; buildProp(); }; wrap.appendChild(bt); }
+    p.appendChild(wrap);
+    p.appendChild(document.createElement("div")).className="small";
+    p.lastChild.textContent="지형이 있는 칸을 클릭해 타입을 칠합니다(잔디=초록·땅=갈색·실내=회색). 우클릭=기본(땅)으로.";
   } else if(t==="prism"){
     row(`<label>출력 방향(복수 선택)</label>`); p.appendChild(arrowPicker("multi",b.prismOut,a=>{ if(a==="·")return; b.prismOut.has(a)?b.prismOut.delete(a):b.prismOut.add(a); if(S().prism)S().prism.out=[...b.prismOut]; draw(); buildProp(); }));
     const rf=row(`<label><input type="checkbox" id="pf" ${b.prismFixed?"checked":""}> 고정</label>`); rf.querySelector("#pf").onchange=e=>{ b.prismFixed=e.target.checked; if(S().prism)S().prism.fixed=b.prismFixed; };
@@ -332,10 +372,11 @@ let _clearArm=null;
 function doClearStage(){ const W=S().W,H=S().H; state.stages[state.cur]=blankStage(); const n=S(); n.W=W; n.H=H; state.sel=null; draw(); buildProp(); }
 
 // ---------- 내보내기 / 불러오기 ----------
-function exportData(){ const out={ unit:{cell_px:40,unity_world_per_cell:1.0}, stages:{} };
-  for(const k of STAGES){ const s=state.stages[k]; const st={};
+function exportData(){ const out={ unit:{cell_px:40,unity_world_per_cell:1.0}, stage_order:[...state.stageList], stages:{} };
+  for(const k of state.stageList){ const s=state.stages[k]; const st={};
     st.stage=+k.replace("stage",""); st.grid={W:s.W,H:s.H};
-    if(s.source) st.source={pos:[s.source.x,s.source.y],dir:s.source.dir};
+    if(s.source){ st.source={pos:[s.source.x,s.source.y],dir:s.source.dir}; if(s.source.hasLens===false) st.source.has_lens=false; }
+    if(s.lensItem) st.lens_item=[s.lensItem.x,s.lensItem.y];
     st.prism = s.prism ? {pos:[s.prism.x,s.prism.y],out:s.prism.out,fixed:s.prism.fixed} : null;
     if(s.gate) st.gate={pos:[s.gate.x,s.gate.y]};
     st.mirrors=s.mirrors.map((m,i)=>({id:"M"+(i+1),pos:[m.x,m.y],angle_deg:m.angle,fixed:m.fixed}));
@@ -348,6 +389,7 @@ function exportData(){ const out={ unit:{cell_px:40,unity_world_per_cell:1.0}, s
     st.wall_transmit=[...s.wallT].map(unkey);
     st.entrance=[...s.entrance].map(unkey);
     st.terrain=Object.fromEntries(Object.entries(s.terrain).map(([c,h])=>[c,h]));
+    if(Object.keys(s.terrainType).length) st.terrain_type={...s.terrainType};   // 칸별 타입 오버라이드(미지정=기본 땅)
     st.wall=[...s.wall,...s.wallT].map(unkey);          // 빛통과벽도 벽 목록에 포함(+wall_transmit로 표시)
     if(s.camera && !camDefault(s.camera)) st.camera=s.camera;   // 전부 기본값이면 생략
     out.stages[k]=st;
@@ -358,9 +400,16 @@ function camDefault(c){ return !c || ((c.view_cells||0)===0 && !c.fit_width && (
 function groupLadders(set){ const byCol={}; for(const k of set){ const [x,y]=unkey(k); (byCol[x]??=[]).push(y); }
   return Object.entries(byCol).map(([c,ys])=>({col:+c,y_span:[Math.min(...ys),Math.max(...ys)]})); }
 
-function importData(obj){ const st=obj.stages||obj; for(const k of STAGES){ const src=st[k]; const s=blankStage(); if(src){
+function importData(obj){ const st=obj.stages||obj;
+  // 스테이지 목록: stage_order 우선 → 없으면 stages 키 순서 → 그래도 없으면 기본. 최소 1개 보장.
+  let list = (Array.isArray(obj.stage_order)&&obj.stage_order.length) ? [...obj.stage_order]
+           : (obj.stages ? Object.keys(obj.stages) : [...DEFAULT_STAGES]);
+  if(!list.length) list=[...DEFAULT_STAGES];
+  state.stageList = list; state.stages = {};
+  for(const k of list){ const src=st[k]; const s=blankStage(); if(src){
     s.W=src.grid?.W||30; s.H=src.grid?.H||15;
     if(src.terrain) for(const [c,h] of Object.entries(src.terrain)) s.terrain[c]=h;
+    if(src.terrain_type) for(const [kk,v] of Object.entries(src.terrain_type)) s.terrainType[kk]=v;
     const wt=new Set((src.wall_transmit||[]).map(a=>key(a[0],a[1]))); s.wallT=new Set(wt);
     for(const a of (src.wall||[])){ const kk=key(a[0],a[1]); if(!wt.has(kk)) s.wall.add(kk); }
     // wall_x* 같은 다른 벽 키도 흡수
@@ -369,7 +418,8 @@ function importData(obj){ const st=obj.stages||obj; for(const k of STAGES){ cons
     for(const l of (src.ladders||[])){ if(!l.y_span)continue; for(let y=l.y_span[0]; y<=l.y_span[1]; y++) s.ladder.add(key(l.col,y)); }
     for(const a of (src.gate_open_zone||[])) s.zone.add(key(a[0],a[1]));
     for(const a of (src.entrance||[])) s.entrance.add(key(a[0],a[1]));
-    if(src.source?.pos) s.source={x:src.source.pos[0],y:src.source.pos[1],dir:src.source.dir||"↓"};
+    if(src.source?.pos) s.source={x:src.source.pos[0],y:src.source.pos[1],dir:src.source.dir||"↓",hasLens:src.source.has_lens!==false};
+    if(src.lens_item) s.lensItem={x:src.lens_item[0],y:src.lens_item[1]};
     if(src.gate?.pos) s.gate={x:src.gate.pos[0],y:src.gate.pos[1]};
     if(src.prism?.pos) s.prism={x:src.prism.pos[0],y:src.prism.pos[1],out:src.prism.out||[],fixed:!!src.prism.fixed};
     if(src.spawn) s.spawn={x:src.spawn[0],y:src.spawn[1]};
@@ -378,7 +428,8 @@ function importData(obj){ const st=obj.stages||obj; for(const k of STAGES){ cons
     for(const d of (src.decoys||[])) if(d.pos) s.decoys.push({x:d.pos[0],y:d.pos[1]});
     if(src.camera) s.camera=src.camera;
   } state.stages[k]=s; }
-  state.sel=null; syncGrid(); draw();
+  state.cur = list.includes(state.cur) ? state.cur : list[0];   // 현재 탭이 사라졌으면 첫 스테이지로
+  state.sel=null; syncGrid(); buildTabs(); buildProp(); draw();
 }
 
 document.getElementById("btnExport").onclick=()=>{ const json=JSON.stringify(exportData(),null,2);

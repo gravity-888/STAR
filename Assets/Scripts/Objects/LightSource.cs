@@ -9,6 +9,9 @@ namespace TowardTheStars.Objects
         [SerializeField] Vector2 direction = Vector2.down;
         [SerializeField] float intensity = 1f;
 
+        // 발사 여부. 랜즈 미장착(횃불에 랜즈 없음)이면 false → BeamTracer가 이 광원을 건너뛴다.
+        public bool Emitting = true;
+
         public Vector2 Direction => direction;
 
         public void Init(Vector2 dir, float intensity = 1f)

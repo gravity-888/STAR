@@ -63,7 +63,9 @@ namespace TowardTheStars.Level
         public float gateExitInset = 0.5f;
 
         // 색 팔레트(플레이스홀더)
-        static readonly Color C_Terrain  = new(0.35f, 0.26f, 0.18f);
+        static readonly Color C_Terrain  = new(0.35f, 0.26f, 0.18f);   // = 땅(dirt) 기본색
+        static readonly Color C_Grass    = new(0.35f, 0.60f, 0.28f);   // 잔디
+        static readonly Color C_Indoor   = new(0.42f, 0.42f, 0.48f);   // 실내
         static readonly Color C_Wall     = new(0.20f, 0.20f, 0.24f);
         static readonly Color C_WallGlass = new(0.45f, 0.55f, 0.70f, 0.45f);   // 빛 통과 예외 벽(반투명)
         static readonly Color C_Platform = new(0.30f, 0.55f, 0.95f, 0.55f);
@@ -95,7 +97,10 @@ namespace TowardTheStars.Level
         public int mirrorRandomSteps = 2;
 
         [Header("프리팹 슬롯 (비우면 색 사각형 폴백)")]
-        public GameObject terrainPrefab;
+        public GameObject terrainPrefab;         // 지형 공통 폴백(타입별 슬롯이 비면 이걸 사용)
+        public GameObject terrainGrassPrefab;    // 잔디
+        public GameObject terrainDirtPrefab;     // 땅
+        public GameObject terrainIndoorPrefab;   // 실내
         public GameObject wallPrefab;
         public GameObject wallGlassPrefab;       // 빛 통과 예외 벽(반투명)
         public GameObject platformPrefab;        // 빛 투과 발판
@@ -105,6 +110,8 @@ namespace TowardTheStars.Level
         public GameObject torchPrefab;           // 랜즈를 장착하는 횃불(고정 배경, 회전 안 함)
         public GameObject mirrorPrefab;          // 회전 가능 거울(돌아가는 반사면)
         public GameObject mirrorFixedPrefab;     // 고정(회색) 거울 — 별도 아트 가능
+        public GameObject mirrorMountPrefab;     // 바닥 거치대 — 거울과 같은 x, 밑면이 바닥에 닿게 세움(회전 안 함)
+        public GameObject mirrorMountCeilingPrefab;  // 천장 거치대(전용 아트 10×80) — 천장에 매다는 거울용. 비면 바닥 거치대를 뒤집어 폴백
         public GameObject prismPrefab;
         public GameObject gatePrefab;            // 게이트 수광부(별도 오브젝트)
         public GameObject gateDoorPrefab;        // 게이트 개폐부(문) — 개폐존 전체를 덮는 긴 블럭 1개
@@ -126,8 +133,21 @@ namespace TowardTheStars.Level
 
         void Start()
         {
+            ApplyStageOrderFromMap();   // 맵의 stage_order로 진행 순서 확정(StartGame이 stageOrder[0]을 쓰기 전에)
             if (useGameFlow) { GameManager.Bootstrap(this); return; }
             if (buildOnStart) Build();
+        }
+
+        // 맵 파일에 stage_order가 있으면 진행 순서·개수를 그걸로 덮어쓴다(인스펙터 값은 폴백). 파싱 실패는 Build에서 로그.
+        void ApplyStageOrderFromMap()
+        {
+            if (mapFile == null) return;
+            try
+            {
+                var d = JsonConvert.DeserializeObject<UnifiedData>(mapFile.text);
+                if (d?.StageOrder != null && d.StageOrder.Length > 0) stageOrder = d.StageOrder;
+            }
+            catch { /* 파싱 오류는 Build()에서 상세 로그 */ }
         }
 
         // 편의 키 입력. 전환 연출/일시정지/타이틀·엔딩(ControlsLocked) 중에는 무시.
@@ -159,6 +179,10 @@ namespace TowardTheStars.Level
             try { data = JsonConvert.DeserializeObject<UnifiedData>(mapFile.text); }
             catch (System.Exception e) { Debug.LogError($"[MapLoader] 파싱 실패: {e.Message}"); return; }
 
+            // 맵이 진행 순서를 지정했으면 반영(인스펙터 값 폴백).
+            if (data != null && data.StageOrder != null && data.StageOrder.Length > 0)
+                stageOrder = data.StageOrder;
+
             if (data == null || !data.Stages.TryGetValue(stageKey, out var stage))
             {
                 string keys = data != null ? string.Join(", ", data.Stages.Keys) : "-";
@@ -184,6 +208,7 @@ namespace TowardTheStars.Level
             BuildGate(stage);
 
             BuildDecoys(stage);
+            BuildLensItem(stage);   // 바닥에 떨어진 랜즈 아이템(있으면)
             BuildEntrance(stage);   // 입장 통로 역방향 트리거
             BuildSpawn(stage);
             var player = BuildPlayer(stage);
@@ -315,9 +340,31 @@ namespace TowardTheStars.Level
             {
                 if (!int.TryParse(kv.Key, out int x)) continue;
                 for (int y = 0; y <= kv.Value; y++)
+                {
+                    // 칸별 타입(잔디/땅/실내)에 맞는 프리팹·색을 고른다. 타입별 슬롯이 비면 terrainPrefab, 그것도 비면 색 사각형.
+                    var (prefab, col) = TerrainStyle(TerrainTypeAt(s, x, y));
                     // 지형은 밟는 바닥 → 솔리드 콜라이더(플레이어 지지). 빛 차단은 벽이 담당.
-                    SolidDecor($"terrain_{x}_{y}", new Vector2(x, y), C_Terrain, Z_TERRAIN, Vector2.one, Vector2.one,
-                               terrainPrefab, fitToScale: true);   // 1칸에 딱 맞춤 → 옆 칸과 연결
+                    SolidDecor($"terrain_{x}_{y}", new Vector2(x, y), col, Z_TERRAIN, Vector2.one, Vector2.one,
+                               prefab, fitToScale: true);   // 1칸에 딱 맞춤 → 옆 칸과 연결
+                }
+            }
+        }
+
+        // 칸 (x,y)의 지형 타입: terrain_type 오버라이드 → 없으면 terrain_type_default("dirt").
+        string TerrainTypeAt(StageData s, int x, int y)
+        {
+            if (s.TerrainType != null && s.TerrainType.TryGetValue($"{x},{y}", out var t) && !string.IsNullOrEmpty(t))
+                return t;
+            return string.IsNullOrEmpty(s.TerrainTypeDefault) ? "dirt" : s.TerrainTypeDefault;
+        }
+
+        (GameObject prefab, Color color) TerrainStyle(string type)
+        {
+            switch (type)
+            {
+                case "grass":  return (terrainGrassPrefab  != null ? terrainGrassPrefab  : terrainPrefab, C_Grass);
+                case "indoor": return (terrainIndoorPrefab != null ? terrainIndoorPrefab : terrainPrefab, C_Indoor);
+                default:       return (terrainDirtPrefab   != null ? terrainDirtPrefab   : terrainPrefab, C_Terrain);
             }
         }
 
@@ -406,14 +453,42 @@ namespace TowardTheStars.Level
             go.transform.SetParent(_root, false);
             go.transform.position = pos;
             var dir = GridMap.DirToVector(s.Source.Dir);
-            go.AddComponent<LightSource>().Init(dir, 1f);
-            // 랜즈를 장착한 횃불 — 회전 없이, 밑면이 아래 지지면(지형/발판)에 닿도록 바닥에 세운다.
+            var src = go.AddComponent<LightSource>();
+            src.Init(dir, 1f);
+            bool mounted = s.Source.HasLens;   // 랜즈 장착 여부
+            src.Emitting = mounted;            // 미장착이면 시작 시 빔 없음
+
+            // 횃불(랜즈 거치대) — 랜즈 유무와 무관하게 항상 바닥에 세운다.
             PlaceOnSurface(go.transform, torchPrefab, "torch", Z_OBJECT - 1,
                            pos.y, SurfaceBelow(s, s.Source.Pos[0], s.Source.Pos[1]));
+
+            // 랜즈 시각("visual") — 장착 시에만 표시. 방향 점은 플레이스홀더 전용.
             Visual(go.transform, lensPrefab, C_Lens, Z_OBJECT, Vector2.one * 0.8f);
-            // 방향 표시 점은 플레이스홀더 전용 — 프리팹 아트는 자체적으로 방향을 표현한다고 보고 생략.
-            if (dir != Vector2.zero && lensPrefab == null)
+            if (mounted && dir != Vector2.zero && lensPrefab == null)
                 Decor("lens_dir", pos + dir * 0.6f, C_Lens, Z_SPAWN, Vector2.one * 0.25f);
+            var lensVis = go.transform.Find("visual");
+
+            // "랜즈 아이템화" 스테이지(lens_item 존재)만 장착/해제 가능 → TorchMount 부착.
+            //   그 외 스테이지는 랜즈 고정(현행 동작): 마운트 없음, F 무반응.
+            if (s.LensItem != null && s.LensItem.Length >= 2)
+                go.AddComponent<TorchMount>().Init(src, lensVis, mounted);
+            else if (lensVis != null)
+                lensVis.gameObject.SetActive(mounted);
+        }
+
+        // 바닥에 떨어진 랜즈 아이템(줍기 대상). 트리거 콜라이더 + LensItem 마커 + 랜즈 시각.
+        void BuildLensItem(StageData s)
+        {
+            if (s.LensItem == null || s.LensItem.Length < 2) return;
+            var pos = new Vector2(s.LensItem[0], s.LensItem[1]);
+            var go = new GameObject("lens_item");
+            go.transform.SetParent(_root, false);
+            go.transform.position = new Vector3(pos.x, pos.y, 0f);
+            var box = go.AddComponent<BoxCollider2D>();
+            box.isTrigger = true;                 // 플레이어와 겹침 감지(빛·이동 방해 안 함)
+            box.size = new Vector2(0.7f, 0.7f);
+            go.AddComponent<TowardTheStars.Objects.LensItem>();
+            Visual(go.transform, lensPrefab, C_Lens, Z_OBJECT, Vector2.one * 0.6f);
         }
 
         void BuildMirrors(StageData s)
@@ -436,6 +511,21 @@ namespace TowardTheStars.Level
                 // 퍼즐 초기화: 회전 가능한 거울만 정답에서 랜덤하게 틀어 놓는다(22.5° 배수 → Q/E로 정답 도달 가능).
                 if (randomizeMirrors) mirror.RandomizeFromSolution(mirrorRandomSteps);
                 if (!m.Fixed) _mirrors.Add(mirror);   // 정답 정렬/재랜덤 대상
+
+                // 거치대: 거울과 같은 x에, 위/아래 중 더 가까운 지지면 쪽에 붙인다.
+                //   아래(지형/발판)가 가까우면 밑면을 바닥에 세우고, 위(발판=천장)가 가까우면 뒤집어 천장에 매단다.
+                //   → stage4 천장 거울(발판 mirror_relation=above인 M1·M7)은 자동으로 천장 부착. 거울 id 하드코딩 없음.
+                //   거울 루트는 회전하지 않고 "visual"만 회전(Mirror.ApplyVisualRotation)하므로 거치대는 안 돌아간다.
+                float mY = m.Pos[1];
+                float below = SurfaceBelow(s, m.Pos[0], mY);
+                float above = SurfaceAbove(s, m.Pos[0], mY);
+                bool ceiling = !float.IsNaN(above) && (float.IsNaN(below) || (above - mY) <= (mY - below));
+                if (ceiling)
+                    // 천장 거울: 전용 천장 거치대 아트(있으면 정립), 없으면 바닥 거치대를 뒤집어 폴백.
+                    PlaceOnSurface(go.transform, mirrorMountCeilingPrefab != null ? mirrorMountCeilingPrefab : mirrorMountPrefab,
+                                   "mount", Z_OBJECT - 1, mY, above, ceiling: true, flip: mirrorMountCeilingPrefab == null);
+                else
+                    PlaceOnSurface(go.transform, mirrorMountPrefab, "mount", Z_OBJECT - 1, mY, below);
             }
         }
 
@@ -455,7 +545,8 @@ namespace TowardTheStars.Level
         {
             if (s.Gate?.Pos == null) return;
             var go = SolidRoot("gate", new Vector2(s.Gate.Pos[0], s.Gate.Pos[1]), 0.9f);
-            var sr = Visual(go.transform, gatePrefab, C_Gate, Z_OBJECT, new Vector2(0.9f, 0.9f));
+            // 수광부 아트는 1칸(40×40px)에 정확히 맞춘다(fitToScale) — PPU·artScale 무관, 빛 판정 콜라이더(0.9)는 불변.
+            var sr = Visual(go.transform, gatePrefab, C_Gate, Z_OBJECT, Vector2.one, fitToScale: true);
             var det = go.AddComponent<GateDetector>();
             det.visual = sr;
             det.CacheClosedColor();
@@ -595,6 +686,7 @@ namespace TowardTheStars.Level
             if (s.Grid != null)
                 pc.SetRespawn(pos, new Vector2(-0.5f, -0.5f), new Vector2(s.Grid.W - 0.5f, s.Grid.H - 0.5f));
             go.AddComponent<MirrorInteractor>();   // Phase 4: Q/E로 가까운 거울 회전 + 빛 재추적
+            go.AddComponent<LensInteractor>().carryVisualPrefab = lensPrefab;   // F: 랜즈 줍기/장착/해제
 
             Visual(go.transform, playerPrefab, C_Player, Z_SPAWN + 1, new Vector2(0.6f, 0.9f));
             return go.transform;
@@ -687,9 +779,32 @@ namespace TowardTheStars.Level
             return float.IsNegativeInfinity(best) ? float.NaN : best;
         }
 
-        // 부속 아트(횃불 등)를 원본 크기(×artScale) 그대로 두고, 밑면이 지지면에 닿도록 내려 놓는다(늘이지 않음).
+        // 지정 칸(col)에서 y보다 위에 있는 가장 낮은 지지면의 아랫면 y를 구한다(천장). 없으면 NaN.
+        //   발판 아랫면 = 발판 중심(cy+PLATFORM_CY) − 두께/2. 지형은 바닥(0..t)이라 천장이 되지 않으므로 제외.
+        float SurfaceAbove(StageData s, int col, float y)
+        {
+            float best = float.PositiveInfinity;
+
+            if (s.Platforms != null)
+                foreach (var p in s.Platforms)
+                {
+                    if (p.Missing || p.Cells == null) continue;
+                    foreach (var c in p.Cells)
+                    {
+                        if (c == null || c.Length < 2 || c[0] != col) continue;
+                        float bottom = c[1] + PLATFORM_CY - PLATFORM_THICK * 0.5f;
+                        if (bottom > y) best = Mathf.Min(best, bottom);
+                    }
+                }
+
+            return float.IsPositiveInfinity(best) ? float.NaN : best;
+        }
+
+        // 부속 아트(횃불·거치대 등)를 원본 크기(×artScale) 그대로 두고, 지지면에 닿도록 놓는다(늘이지 않음).
+        //   ceiling=false: 밑면을 아래 지지면에 맞춰 세운다. ceiling=true: 윗면을 위 지지면(천장)에 맞춰 매단다(위치).
+        //   flip=true: 세로를 상하 반전(바닥 아트를 천장에 재사용할 때). 전용 천장 아트면 flip=false로 정립 배치.
         //   지지면을 못 찾으면 기준 오브젝트 중심에 배치.
-        void PlaceOnSurface(Transform parent, GameObject prefab, string childName, int order, float anchorY, float surfaceY)
+        void PlaceOnSurface(Transform parent, GameObject prefab, string childName, int order, float anchorY, float surfaceY, bool ceiling = false, bool flip = false)
         {
             if (prefab == null) return;
 
@@ -705,14 +820,17 @@ namespace TowardTheStars.Level
             }
 
             var baseScale = go.transform.localScale;
-            go.transform.localScale = new Vector3(baseScale.x * artScale, baseScale.y * artScale, baseScale.z);
+            float sx = baseScale.x * artScale, sy = baseScale.y * artScale;
+            // flip이면 세로를 음수로 → 상하 반전. 가로·크기는 동일.
+            go.transform.localScale = new Vector3(sx, flip ? -sy : sy, baseScale.z);
 
             if (float.IsNaN(surfaceY)) { go.transform.localPosition = Vector3.zero; return; }
 
-            // 밑면을 지지면에 맞춤: 중심 = 지지면 + 높이/2 (부모 기준 상대좌표로 변환)
+            // 바닥: 밑면=지지면 → 중심 = 지지면 + 높이/2. 천장: 윗면=천장면 → 중심 = 천장면 − 높이/2.
             float nh = (first != null && first.sprite != null) ? first.sprite.bounds.size.y : 1f;
-            float height = nh * go.transform.localScale.y;
-            go.transform.localPosition = new Vector3(0f, surfaceY + height * 0.5f - anchorY, 0f);
+            float height = nh * Mathf.Abs(sy);
+            float centerY = ceiling ? surfaceY - height * 0.5f : surfaceY + height * 0.5f;
+            go.transform.localPosition = new Vector3(0f, centerY - anchorY, 0f);
         }
 
         // 타일 전용: 아트 원본 크기와 무관하게 지정 크기(칸)에 정확히 맞춘다.

@@ -5846,7 +5846,9 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::TowardTheStars.Objects.Mirror
   angleDeg: 337.5
+  solutionAngle: 0
   isFixed: 0
+  visualAngleOffset: 0
 --- !u!61 &844407777
 BoxCollider2D:
   m_ObjectHideFlags: 0
@@ -7118,10 +7120,14 @@ MonoBehaviour:
   showTitleOnBoot: 1
   restartKey: 1
   debugStageKeys: 1
+  autoSolveKey: 1
   followPlayer: 1
   cameraViewCells: 16
   gateExitInset: -0.5
   artScale: 2
+  mirrorArtAngleOffset: 90
+  randomizeMirrors: 1
+  mirrorRandomSteps: 2
   terrainPrefab: {fileID: 3036692677029143887, guid: 026db0c5fb8c90e42a19fec5e1b8819b, type: 3}
   wallPrefab: {fileID: 8729295376759312252, guid: d7babcf66473ea74da5612289f0afbb7, type: 3}
   wallGlassPrefab: {fileID: 8729295376759312252, guid: d7babcf66473ea74da5612289f0afbb7, type: 3}
@@ -14461,6 +14467,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::TowardTheStars.Objects.GateDoor
   closedColor: {r: 0.78, g: 0.35, b: 0.3, a: 1}
   openColor: {r: 0.4, g: 1, b: 0.5, a: 0.12}
+  slideDuration: 0.8
 --- !u!1 &2101365961
 GameObject:
   m_ObjectHideFlags: 0

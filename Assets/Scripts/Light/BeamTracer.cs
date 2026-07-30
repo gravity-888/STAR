@@ -41,7 +41,7 @@ namespace TowardTheStars.Light
             var outgoing = _outgoing;
 
             _sources ??= Object.FindObjectsByType<LightSource>(FindObjectsSortMode.None);
-            foreach (var src in _sources) if (src != null) stack.Push((src.Emit(), 0));
+            foreach (var src in _sources) if (src != null && src.Emitting) stack.Push((src.Emit(), 0));
 
             while (stack.Count > 0)
             {

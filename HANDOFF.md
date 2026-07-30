@@ -14,10 +14,16 @@
 
 **그 사이 아트 seam 동작을 대폭 다듬음**(상세는 §6·§7·§10):
 - 게이트 문 = 개폐존 전체 **긴 블럭 1개** + 열림 시 **위로 슬라이드**, 닫힘 시 하강(`GateDoor`).
-- 거울: 아트 **기본각 보정 `mirrorArtAngleOffset`(90°, 세로로 그림)** + **시작각 ±45° 랜덤**(`randomizeMirrors`) + **정답 정렬 `P`키**(`SolveAllMirrors`) + **안 풀린 상태로 시작 보장**(`EnsureUnsolvedStart`). 거울 거치대(mirrorMount)는 **제거**.
+- 거울: 아트 **기본각 보정 `mirrorArtAngleOffset`(90°, 세로로 그림)** + **시작각 ±45° 랜덤**(`randomizeMirrors`) + **정답 정렬 `P`키**(`SolveAllMirrors`) + **안 풀린 상태로 시작 보장**(`EnsureUnsolvedStart`).
+- 거울 거치대 = **바닥/천장 2종 재도입**(`mirrorMountPrefab`·`mirrorMountCeilingPrefab`). 코드가 거울마다 위/아래 중 **가까운 지지면**을 골라 자동 배치 — 아래=바닥에 세움, 위(발판=천장)=**뒤집어 매닮**. stage4 천장 거울(발판 `mirror_relation:above`인 M1·M7)이 자동 처리(하드코딩 없음). 천장 전용 아트 10×80.
 - 횃불(`torchPrefab`) 바닥에 세움, 발판 윗면을 **지형과 같은 높이(y+0.5)로 올림**, 타일(지형·벽·발판) **칸에 정확 정합**, 사다리 **1칸 조각 세로 반복**, **`artScale` 표시배율**(아트만 확대, 콜라이더 불변).
 
-**맵 에디터 신설**: [`tools/map-editor.html`](tools/map-editor.html) — 브라우저 단일파일. 격자에 전 요소 배치 → **스키마 JSON 입출력**(라운드트립 검증), 카메라 이동범위·화면크기 시각화(게임 계산 재현). 전체 스크립트 해설 [`SCRIPTS.md`](SCRIPTS.md), C# 문법사전 [`CSHARP_SYNTAX.md`](CSHARP_SYNTAX.md) 작성.
+**맵 에디터 신설·확장**: [`tools/map-editor.html`](tools/map-editor.html) — 브라우저 단일파일. 격자에 전 요소 배치 → **스키마 JSON 입출력**(라운드트립 검증), 카메라 이동범위·화면크기 시각화(게임 계산 재현). **지형 타입칠(잔디/땅/실내)·광원(횃불) has_lens 토글·시작 랜즈(바닥) 배치·스테이지 추가/삭제(＋/－, `stage_order` 내보냄)** 지원. 전체 스크립트 해설 [`SCRIPTS.md`](SCRIPTS.md), C# 문법사전 [`CSHARP_SYNTAX.md`](CSHARP_SYNTAX.md).
+
+**후속 추가(2026-07-30)**:
+- **지형 아트 3종**: `terrainGrassPrefab`·`terrainDirtPrefab`·`terrainIndoorPrefab`(+공통 폴백 `terrainPrefab`). 맵의 `terrain_type`(칸별 `"x,y"→grass|dirt|indoor`)·`terrain_type_default`(기본 `dirt`)로 지정. 색 폴백 초록/갈색/회색.
+- **랜즈 시스템(stage4 한정)**: 랜즈가 **획득 아이템**. `LightSource.Emitting`이 false면 빔 없음. 횃불에 `TorchMount`(F키 장착/해제), 바닥 `LensItem`(F키 줍기), 플레이어 `LensInteractor`(F 문맥감응). 맵 스키마: `source.has_lens`(기본 true)·`lens_item:[x,y]`. stage4 = `has_lens:false`+`lens_item:[8,1]`. 1~3은 기존대로(랜즈 고정 장착).
+- **게이트 수광부** = 1칸(40×40) 고정(`fitToScale`). **PPU는 100 유지**(과거 40 실험은 롤백).
 
 **▶ 다음 순서**: (a) 사용자가 아트 제작·슬롯 채우기로 **3번 마무리** → (b) **오디오 seam**(AudioManager, 3번의 나머지 절반 — 미착수) → (c) 로드맵 **4(실기 빌드) → 5(플레이어 메트릭) → 6(밸런싱) → 7(최종 아트/오디오 교체)**. 맵 에디터는 필요 시 P4(undo/개별선택 이동)·P6(빛 경로 미리보기) 확장 가능.
 
@@ -73,12 +79,18 @@ Assets/Scripts/
     BeamTracer.cs        빛 추적(스택 기반, 프리즘 분기 지원) + LineRenderer 렌더. 각 오브젝트에 위임만.
                          ★매 프레임(LateUpdate) 재추적 → 플레이어 등 움직이는 차폐물 실시간 반영. 버퍼 재사용.
   Objects/               ★각 오브젝트가 자기 연산 담당
-    LightSource.cs       랜즈/광원 — 빛 발사
+    LightSource.cs       랜즈/광원 — 빛 발사. Emitting=false면 BeamTracer가 건너뜀(랜즈 미장착)
+    TorchMount.cs        횃불 랜즈 장착부 — 장착=발사ON+랜즈시각 / 해제=OFF+숨김. F키 대상(랜즈 아이템화 스테이지만)
+    LensItem.cs          바닥에 떨어진 랜즈(줍기 대상) — 트리거 마커. 획득 처리는 LensInteractor
     Mirror.cs            거울 — 반사 (IBeamHit). Rotate(steps)로 22.5° 회전(Phase 4용 준비됨)
     Prism.cs             프리즘 — 분기 0.5+0.5 (IBeamHit). 출력방향은 맵 out에서 주입
     GateDetector.cs      게이트 수광부 — 흡수·광량누적·개방 (IBeamHit). BeginFrame/Commit 엣지 트리거(OnOpen 1회, OnStateChanged 양방향)
     GateDoor.cs          게이트 개폐부(문) — gate_open_zone 셀. 닫힘=솔리드 콜라이더로 차단 / 열림=콜라이더 off 통과. 수광부 OnStateChanged 구독
     Ladder.cs            사다리(Stage4) — 등반용 트리거. 광학 상호작용 없음(빛 통과)
+  Player/
+    PlayerController.cs  이동/점프(가변)/사다리 등반 + 낙사 리스폰. 신 Input System
+    MirrorInteractor.cs  Q/E로 가까운 비고정 거울 회전(하이라이트)
+    LensInteractor.cs    F키 문맥감응 — 바닥 랜즈 줍기 / 횃불 근처 장착·해제. 소지 시 머리 위 표시
 ```
 
 **빛 흐름**: `LightSource.Emit()` → `BeamTracer`가 Raycast → 맞은 오브젝트의 `IBeamHit.Interact()` 호출 → 이어질 빔을 스택에 push → 반복. 새 광학 오브젝트를 추가해도 `IBeamHit`만 구현하면 tracer 수정 불필요.
@@ -94,7 +106,13 @@ Assets/Scripts/
 - **`stages_cord.json`** — ★최신 맵 (SVG 재추출, stage4 발판·지형·벽·사다리 완비).
 - 맵 수정 = 이 JSON 편집 → 저장 → Unity 포커스(재임포트) → MapLoader 우클릭 **Build**.
 - 파일 이름은 자유(스키마만 같으면 됨). Stage Key는 파일 안 stages의 키(`stage1`~`stage4`)와 일치해야 함.
-- **맵 에디터(웹툴)**: [`tools/map-editor.html`](tools/map-editor.html) — 격자에 지형·벽·발판·사다리·광원(방향)·거울(각도·고정)·프리즘·게이트·개폐존·스폰 등을 배치하고 **이 스키마 그대로 JSON 출력**(내보내기) + 기존 맵 **불러오기**. 브라우저에서 파일을 열어 사용(설치 불필요). 출력물을 `Assets/Maps/`에 넣고 MapLoader에 지정. 좌표 y=위로 증가, 거울 각도 22.5° 스냅, export↔import 라운드트립 검증됨. (P1 MVP — 빛 경로 미리보기·undo 등은 미구현)
+- **신규 스키마 필드(2026-07-30)**:
+  - `terrain_type`: `{ "x,y": "grass|dirt|indoor" }` 칸별 지형 타입 오버라이드. `terrain_type_default`(없으면 `"dirt"`). 미지정 칸=기본. (지형 위치 자체는 여전히 `terrain` = col→높이)
+  - `source.has_lens`: 시작 시 랜즈 장착 여부(기본 `true`). `false`면 시작 시 빔 없음.
+  - `lens_item: [x,y]`: 바닥에 떨어진 시작 랜즈 위치(획득 대상). 있으면 그 스테이지에서 F키 장착/해제 활성.
+  - `stage_order`(최상위, `stages`와 동렬): 진행 순서·개수 배열(예: `["stage1","stage2","stage3"]`). 있으면 **MapLoader.stageOrder를 덮어씀** → 스테이지 개수를 맵이 결정(엔딩·전환·디버그키 자동 연동, 인스펙터 수정 불필요). 없으면 인스펙터 값 폴백. `ApplyStageOrderFromMap()`이 부팅 시(StartGame 전)와 Build에서 반영.
+  - 현재 **stage4만** `has_lens:false` + `lens_item:[8,1]`. 1~3은 필드 없음(= 기존 동작).
+- **맵 에디터(웹툴)**: [`tools/map-editor.html`](tools/map-editor.html) — 격자에 지형(+타입칠 잔디/땅/실내)·벽·발판·사다리·광원(횃불, `has_lens` 토글·방향)·**시작 랜즈(바닥)**·거울(각도·고정)·프리즘·게이트·개폐존·스폰 등을 배치하고 **이 스키마 그대로 JSON 출력**(내보내기) + 기존 맵 **불러오기**. 위 신규 필드 전부 **라운드트립 지원**. 브라우저에서 파일을 열어 사용(설치 불필요). 좌표 y=위로 증가, 거울 각도 22.5° 스냅. (P1 MVP — 빛 경로 미리보기·undo 등은 미구현)
 
 ---
 
@@ -132,8 +150,10 @@ Assets/Scripts/
 | 낙사 리스폰 | ⚠️ 구현됨(레벨 경계 밖 → 스폰 복귀, 거울 각도는 유지). 단 **현재 맵이 사방으로 막혀 있어 도달 불가 = 미검증 보험**. 경계 여유는 `PlayerController.boundsMargin`(기본 4칸) |
 | 발판 빛 차단 | ✅ 발판별 `transmit` 플래그를 실제 반영. `false`면 빛 차단(진한 남색). stage3 프리즘 아래 발판이 이 케이스 |
 | 게임 플로우 / UI | ✅ **타이틀→플레이→엔딩** 상태머신([`GameManager`](Assets/Scripts/Level/GameManager.cs), 코드 생성 오버레이·씬세팅 불필요). stage4 클리어→엔딩화면→아무 키→타이틀. **일시정지**(ESC): 계속`ESC`/재시작`R`/타이틀`T`. `MapLoader.useGameFlow`(기본 켜짐)·`showTitleOnBoot` 토글. 스테이지 HUD·진행저장은 **사용자 결정으로 제외** |
+| 지형 타입 3종 | ✅ 잔디/땅/실내 프리팹 슬롯 + 색 폴백. 맵 `terrain_type`(칸별)·`terrain_type_default`로 지정. 미지정=땅. 타일 규칙 동일(1칸 정합) |
+| 랜즈 아이템(stage4) | ✅ 랜즈 획득·장착 시스템. `has_lens`/`lens_item`으로 데이터 구동. **F**=줍기/장착/해제. 미장착 시 빔 없음(`LightSource.Emitting`). 코드 검증(빌드)만 완료 — **플레이 실측은 사용자 확인 대기** |
 
-**조작**: 좌우 `A/D`·`←/→` · 점프 `Space`(접지 시, **가변 높이**: 짧게 탭≈0.7칸 / 끝까지 누르면 최대 3.5칸) · 사다리 등반 `W/S`·`↑/↓` · **거울 회전 `Q`(반시계)/`E`(시계)** — 반경 2.5칸 안 가장 가까운 비고정 거울(흰색 하이라이트) 22.5°씩 · **리셋 `R`** · **정답 정렬 `P`**(디버그) · **스테이지 점프 `1~4`**(디버그).
+**조작**: 좌우 `A/D`·`←/→` · 점프 `Space`(접지 시, **가변 높이**: 짧게 탭≈0.7칸 / 끝까지 누르면 최대 3.5칸) · 사다리 등반 `W/S`·`↑/↓` · **거울 회전 `Q`(반시계)/`E`(시계)** — 반경 2.5칸 안 가장 가까운 비고정 거울(흰색 하이라이트) 22.5°씩 · **랜즈 줍기/장착·해제 `F`**(stage4 — 바닥 랜즈에 닿아 F로 줍고, 횃불 근처 F로 장착/해제) · **리셋 `R`** · **정답 정렬 `P`**(디버그) · **스테이지 점프 `1~4`**(디버그).
 
 **색상 범례**: 노랑=광원, 초록=게이트, 하늘=거울(회색=고정), 자홍=프리즘, 반투명 파랑=발판(빛 투과), **진한 남색=발판(빛 차단)**, 갈색=지형/사다리, 빨강=오답, 흰=스폰, **주황=플레이어**.
 
@@ -217,7 +237,7 @@ Assets/Scripts/
 - **게이트/문 색 피드백**: 게이트 수광부·개폐부는 열림/닫힘 시 `visual`의 **첫 SpriteRenderer 색을 코드가 바꾼다**(초록/반투명). 색으로 상태를 보이려면 루트에 대표 SpriteRenderer를 두거나, 그 방식이 싫으면 애니메이터/자식 스크립트로 대체(그 경우 색 틴트는 무시됨 — null-safe).
 - **랜즈 방향 점**: `lensPrefab`을 넣으면 플레이스홀더 방향 표시 점은 자동 생략(프리팹이 방향을 표현한다고 가정).
 
-**슬롯 목록(16종)**: `terrainPrefab` · `wallPrefab` · `wallGlassPrefab`(빛 통과 벽) · `platformPrefab`(투과 발판) · `platformSolidPrefab`(차단 발판) · `ladderPrefab` · `lensPrefab`(랜즈) · `torchPrefab`(랜즈 거치 횃불) · `mirrorPrefab`(회전 반사면) · `mirrorFixedPrefab`(고정 거울) · `prismPrefab` · `gatePrefab`(수광부) · `gateDoorPrefab`(문) · `decoyPrefab` · `spawnPrefab` · `playerPrefab`.
+**슬롯 목록(21종)**: `terrainPrefab`(공통 폴백) · `terrainGrassPrefab`(잔디) · `terrainDirtPrefab`(땅) · `terrainIndoorPrefab`(실내) · `wallPrefab` · `wallGlassPrefab`(빛 통과 벽) · `platformPrefab`(투과 발판) · `platformSolidPrefab`(차단 발판) · `ladderPrefab` · `lensPrefab`(랜즈 — 광원 시각 + 아이템/소지 시각 겸용) · `torchPrefab`(랜즈 거치 횃불) · `mirrorPrefab`(회전 반사면) · `mirrorFixedPrefab`(고정 거울) · `mirrorMountPrefab`(바닥 거치대) · `mirrorMountCeilingPrefab`(천장 거치대 10×80) · `prismPrefab` · `gatePrefab`(수광부, 1칸 fitToScale) · `gateDoorPrefab`(문) · `decoyPrefab` · `spawnPrefab` · `playerPrefab`. (랜즈 아이템·소지 시각은 별도 슬롯 없이 `lensPrefab` 재사용)
 
 **구조 메모**: 랜즈=`lensPrefab`+`torchPrefab`(랜즈는 위치 중심, 횃불은 바닥에 세움·회전X). 거울=`mirrorPrefab` 하나(코드가 회전; 아트 기본각 보정 `mirrorArtAngleOffset`=90, 시작각 ±45° 랜덤). **게이트 문**은 개폐존 전체를 덮는 **긴 블럭 1개**(열리면 위로 슬라이드). 수광부(`gatePrefab`)는 문과 **별개 위치의 오브젝트**.
 
