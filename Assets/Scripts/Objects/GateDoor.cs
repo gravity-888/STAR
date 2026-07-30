@@ -1,5 +1,6 @@
 using System.Collections;
 using UnityEngine;
+using TowardTheStars.Level;
 
 namespace TowardTheStars.Objects
 {
@@ -77,6 +78,7 @@ namespace TowardTheStars.Objects
             if (IsOpen == open) return;
             IsOpen = open;
 
+            if (open) AudioManager.GateOpen();
             if (open && _blocker != null) _blocker.enabled = false;   // 열림: 즉시 통과 허용
             ApplySorting(open);                                       // 열림=뒤로(가려짐) / 닫힘=앞으로(보임) 즉시 적용
             if (_anim != null) StopCoroutine(_anim);

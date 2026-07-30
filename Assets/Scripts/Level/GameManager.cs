@@ -84,6 +84,7 @@ namespace TowardTheStars.Level
             _cooldown = 0.35f;
             _pulseText = _titleHint;
             Switch(_titlePanel);
+            AudioManager.PlayBgm(AudioManager.Bgm.Title);
         }
 
         void StartGameFromTitle()
@@ -93,6 +94,7 @@ namespace TowardTheStars.Level
             _pulseText = null;
             Switch(null);                              // 오버레이 제거 → 게임 화면
             PlayerController.ControlsLocked = false;
+            AudioManager.PlayBgm(AudioManager.Bgm.Play);
             _loader.StartGame();                       // stageOrder[0] 빌드
         }
 
@@ -138,6 +140,7 @@ namespace TowardTheStars.Level
             _cooldown = 0.4f;
             _pulseText = _endingHint;
             Switch(_endingPanel);
+            AudioManager.PlayBgm(AudioManager.Bgm.Ending);
         }
 
         void EndingToTitle()

@@ -1,6 +1,7 @@
 using UnityEngine;
 using UnityEngine.InputSystem;
 using TowardTheStars.Objects;
+using TowardTheStars.Level;
 
 namespace TowardTheStars.Player
 {
@@ -32,8 +33,8 @@ namespace TowardTheStars.Player
             var mount = NearestMount();
             if (mount != null)
             {
-                if (mount.Mounted)           { mount.SetMounted(false); _hasLens = true; }   // 해제 → 회수
-                else if (_hasLens)           { mount.SetMounted(true);  _hasLens = false; }   // 장착 → 소모
+                if (mount.Mounted)           { mount.SetMounted(false); _hasLens = true;  AudioManager.LensUnmount(); }   // 해제 → 회수
+                else if (_hasLens)           { mount.SetMounted(true);  _hasLens = false; AudioManager.LensMount(); }    // 장착 → 소모
                 UpdateCarryVisual();
                 return;
             }
@@ -44,6 +45,7 @@ namespace TowardTheStars.Player
                 _touching.Take();
                 _touching = null;
                 _hasLens = true;
+                AudioManager.LensPickup();
                 UpdateCarryVisual();
             }
         }

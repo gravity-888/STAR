@@ -1,6 +1,7 @@
 using UnityEngine;
 using UnityEngine.InputSystem;
 using TowardTheStars.Objects;
+using TowardTheStars.Level;
 
 namespace TowardTheStars.Player
 {
@@ -31,7 +32,7 @@ namespace TowardTheStars.Player
             if (kb.qKey.wasPressedThisFrame) steps -= 1;   // 반시계
             if (kb.eKey.wasPressedThisFrame) steps += 1;   // 시계
             // 회전만 하면 됨 — 빛은 BeamTracer가 매 프레임(LateUpdate) 재추적.
-            if (steps != 0) _selected.Rotate(steps);
+            if (steps != 0) { _selected.Rotate(steps); AudioManager.MirrorRotate(); }
         }
 
         // 반경 내 가장 가까운 비고정 거울을 고른다.

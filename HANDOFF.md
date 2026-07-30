@@ -24,8 +24,10 @@
 - **지형 아트 3종**: `terrainGrassPrefab`·`terrainDirtPrefab`·`terrainIndoorPrefab`(+공통 폴백 `terrainPrefab`). 맵의 `terrain_type`(칸별 `"x,y"→grass|dirt|indoor`)·`terrain_type_default`(기본 `dirt`)로 지정. 색 폴백 초록/갈색/회색.
 - **랜즈 시스템(stage4 한정)**: 랜즈가 **획득 아이템**. `LightSource.Emitting`이 false면 빔 없음. 횃불에 `TorchMount`(F키 장착/해제), 바닥 `LensItem`(F키 줍기), 플레이어 `LensInteractor`(F 문맥감응). 맵 스키마: `source.has_lens`(기본 true)·`lens_item:[x,y]`. stage4 = `has_lens:false`+`lens_item:[8,1]`. 1~3은 기존대로(랜즈 고정 장착).
 - **게이트 수광부** = 1칸(40×40) 고정(`fitToScale`). **PPU는 100 유지**(과거 40 실험은 롤백).
+- **게이트 열림 방향**(`gate.open_dir`) + 열릴 때 아트 뒤로 가려짐(`GateDoor.openSortingOffset`).
+- **오디오 seam 구축**([`AudioManager`](Assets/Scripts/Level/AudioManager.cs)): 정적 호출 훅(거울회전·게이트개방·전환·점프/착지·랜즈 줍기/장착/해제·타이틀/플레이/엔딩 BGM) 심음. **씬에 AudioManager 두고 클립만 채우면 재생, 없거나 빈 슬롯이면 무음**(프리팹 seam과 동일 방식) → 로드맵 3의 오디오 절반 **코드 완료, 클립 미할당**.
 
-**▶ 다음 순서**: (a) 사용자가 아트 제작·슬롯 채우기로 **3번 마무리** → (b) **오디오 seam**(AudioManager, 3번의 나머지 절반 — 미착수) → (c) 로드맵 **4(실기 빌드) → 5(플레이어 메트릭) → 6(밸런싱) → 7(최종 아트/오디오 교체)**. 맵 에디터는 필요 시 P4(undo/개별선택 이동)·P6(빛 경로 미리보기) 확장 가능.
+**▶ 다음 순서**: (a) 사용자가 아트 제작·슬롯 채우기 + **오디오 클립 채우기**로 **3번 마무리**(seam은 코드·구축 완료) → (b) 로드맵 **4(실기 빌드) → 5(플레이어 메트릭) → 6(밸런싱) → 7(최종 아트/오디오 교체)**. 맵 에디터는 필요 시 P4(undo/개별선택 이동)·P6(빛 경로 미리보기) 확장 가능.
 
 ---
 
@@ -153,6 +155,7 @@ Assets/Scripts/
 | 게임 플로우 / UI | ✅ **타이틀→플레이→엔딩** 상태머신([`GameManager`](Assets/Scripts/Level/GameManager.cs), 코드 생성 오버레이·씬세팅 불필요). stage4 클리어→엔딩화면→아무 키→타이틀. **일시정지**(ESC): 계속`ESC`/재시작`R`/타이틀`T`. `MapLoader.useGameFlow`(기본 켜짐)·`showTitleOnBoot` 토글. 스테이지 HUD·진행저장은 **사용자 결정으로 제외** |
 | 지형 타입 3종 | ✅ 잔디/땅/실내 프리팹 슬롯 + 색 폴백. 맵 `terrain_type`(칸별)·`terrain_type_default`로 지정. 미지정=땅. 타일 규칙 동일(1칸 정합) |
 | 랜즈 아이템(stage4) | ✅ 랜즈 획득·장착 시스템. `has_lens`/`lens_item`으로 데이터 구동. **F**=줍기/장착/해제. 미장착 시 빔 없음(`LightSource.Emitting`). 코드 검증(빌드)만 완료 — **플레이 실측은 사용자 확인 대기** |
+| 오디오 seam | ✅ [`AudioManager`](Assets/Scripts/Level/AudioManager.cs) 구축 — 정적 훅(SFX 8종 + BGM 3종). **씬에 컴포넌트 두고 클립 채우면 재생, 비면 무음**. 클립은 미할당(사용자가 채움) |
 
 **조작**: 좌우 `A/D`·`←/→` · 점프 `Space`(접지 시, **가변 높이**: 짧게 탭≈0.7칸 / 끝까지 누르면 최대 3.5칸) · 사다리 등반 `W/S`·`↑/↓` · **거울 회전 `Q`(반시계)/`E`(시계)** — 반경 2.5칸 안 가장 가까운 비고정 거울(흰색 하이라이트) 22.5°씩 · **랜즈 줍기/장착·해제 `F`**(stage4 — 바닥 랜즈에 닿아 F로 줍고, 횃불 근처 F로 장착/해제) · **리셋 `R`** · **정답 정렬 `P`**(디버그) · **스테이지 점프 `1~4`**(디버그).
 

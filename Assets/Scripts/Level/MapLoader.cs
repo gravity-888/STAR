@@ -309,6 +309,7 @@ namespace TowardTheStars.Level
         {
             _transitioning = true;
             Player.PlayerController.ControlsLocked = true;   // 연출 시작 → 조작 잠금
+            AudioManager.StageTransition();
             if (_fader == null) _fader = ScreenFader.Create();
             yield return _fader.Fade(0f, 1f);   // 페이드 아웃(어둡게)
             _reverseEntry = reverse;             // 역주행이면 exit_spawn(출구쪽)에서 등장

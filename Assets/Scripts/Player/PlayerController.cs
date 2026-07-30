@@ -1,6 +1,7 @@
 using UnityEngine;
 using UnityEngine.InputSystem;
 using TowardTheStars.Objects;
+using TowardTheStars.Level;
 
 namespace TowardTheStars.Player
 {
@@ -45,6 +46,7 @@ namespace TowardTheStars.Player
 
         int _ladderCount;        // 현재 겹친 사다리 수 (>0 이면 사다리 위)
         bool _climbing;
+        bool _wasGrounded = true;   // 착지 효과음 에지 감지(공중→접지). 스폰/리스폰 직후 오발동 방지로 true 시작
 
         Vector2 _spawnPos;                  // 이번 스테이지 스폰 지점(MapLoader 주입)
         Vector2 _boundsMin, _boundsMax;     // 레벨 경계(카메라 클램프와 동일 기준)
@@ -130,14 +132,18 @@ namespace TowardTheStars.Player
             v.x = ix * moveSpeed;
 
             // 코요테 타임: 접지 중이면 유예 리필, 공중이면 감소. >0인 동안은 점프 허용.
-            if (IsGrounded()) _coyoteTimer = coyoteTime;
+            bool grounded = IsGrounded();
+            if (grounded) _coyoteTimer = coyoteTime;
             else _coyoteTimer -= Time.fixedDeltaTime;
+            if (grounded && !_wasGrounded) AudioManager.Land();   // 공중→접지 에지 = 착지
+            _wasGrounded = grounded;
 
             if (_jumpQueued && _coyoteTimer > 0f)
             {
                 v.y = JumpVelocity();     // 최대 속도로 발사(끝까지 누르면 3.5칸)
                 _coyoteTimer = 0f;        // 소비 → 공중 재점프(더블점프) 방지
                 _jumpReleased = false;    // 새 점프 → 이전 릴리즈 신호 무시
+                AudioManager.Jump();
             }
             // 가변 점프: 상승 중 버튼을 떼면 상승속도 감쇠 → 낮은 점프(누른 시간에 비례).
             if (_jumpReleased && v.y > 0f) v.y *= jumpCutMultiplier;
@@ -175,6 +181,7 @@ namespace TowardTheStars.Player
             _rb.gravityScale = _baseGravity;
             _ladderCount = 0;
             _climbing = false;
+            _wasGrounded = true;      // 리스폰 직후 착지음 오발동 방지
             _coyoteTimer = 0f;
             _jumpQueued = false;
             _jumpReleased = false;

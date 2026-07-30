@@ -23,6 +23,7 @@ Assets/Scripts/
             ScreenFader.cs    스테이지 전환 페이드(검은 오버레이)
             CameraFollow.cs   플레이어 추적 카메라 + 레벨 경계 클램프
             GateExit.cs       스테이지 이동 트리거(게이트 통과/입장통로 역주행)
+            AudioManager.cs   오디오 seam: 정적 SFX/BGM 훅(씬 컴포넌트, 클립 미할당이면 무음)
   Light/    Beam.cs           Beam 구조체 + IBeamHit 인터페이스
             BeamTracer.cs     빛 추적(스택 기반, 매 프레임) + LineRenderer 렌더
   Objects/  LightSource.cs    광원(랜즈): 빛 발사(Emitting=false면 미발사)
@@ -361,6 +362,19 @@ Assets/Scripts/
 
 ---
 
+## 19. Level / `AudioManager.cs`
+
+**역할**: 오디오 seam(로드맵 3의 오디오 절반). 코드 곳곳의 이벤트가 **정적 메서드**를 호출하면 재생한다. **씬에 이 컴포넌트를 두고 클립 슬롯을 채우면 소리가 나고, 컴포넌트가 없거나 슬롯이 비면 조용히 무시**(프리팹 seam과 동일 철학) → 최종 오디오 교체(로드맵 7) 시 슬롯만 채우면 호출부 변경 0.
+
+- **`I`**(정적 인스턴스): `Awake`에서 등록 + `DontDestroyOnLoad`(전환 간 유지, 중복 파괴). BGM/SFX용 `AudioSource` 2개를 코드로 부착.
+- **클립 슬롯**: BGM(`bgmTitle`·`bgmPlay`·`bgmEnding` + `bgmVolume`), SFX(`sfxMirrorRotate`·`sfxGateOpen`·`sfxStageTransition`·`sfxJump`·`sfxLand`·`sfxLensPickup`·`sfxLensMount`·`sfxLensUnmount` + `sfxVolume`).
+- **정적 API**(전부 null-safe): `MirrorRotate()`·`GateOpen()`·`StageTransition()`·`Jump()`·`Land()`·`LensPickup()`·`LensMount()`·`LensUnmount()`, BGM은 `PlayBgm(Bgm.Title|Play|Ending)`(같은 곡이면 안 끊음).
+- **훅 위치**: 거울 회전=`MirrorInteractor`, 게이트 개방=`GateDoor.SetOpen(true)`, 전환=`MapLoader.Transition`, 점프/착지=`PlayerController`(착지는 공중→접지 에지), 랜즈 줍기/장착/해제=`LensInteractor`, BGM 3종=`GameManager`(EnterTitle/StartGameFromTitle/HandleGameComplete).
+
+**원리 노트**: 호출부는 `AudioManager.GateOpen()`처럼 정적으로 부르고 인스턴스 유무는 내부에서 판단(`I == null`이면 무시). 그래서 씬에 오디오를 안 넣어도 게임은 그대로 동작하고, 넣으면 소리만 붙는다.
+
+---
+
 ## 부록 A. 데이터 흐름 요약
 
 ```mermaid
@@ -393,3 +407,4 @@ flowchart TD
 | 랜즈 획득·장착(빔 게이팅) | `LensInteractor`·`TorchMount`·`LensItem` (+ `LightSource.Emitting`) |
 | 카메라 | `CameraFollow` (+ `MapLoader.SetupCamera`) |
 | 게임 흐름·UI | `GameManager` (+ `ScreenFader`) |
+| 오디오(SFX·BGM) | `AudioManager` (각 이벤트 스크립트가 정적 호출) |
