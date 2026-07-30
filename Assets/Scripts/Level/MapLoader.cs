@@ -642,7 +642,12 @@ namespace TowardTheStars.Level
             SpriteRenderer sr = gateDoorPrefab != null
                 ? InstantiateGateDoor(block.transform, gateDoorPrefab, Z_OBJECT, w, h)
                 : Visual(block.transform, door.closedColor, Z_OBJECT, new Vector2(w - 0.1f, h - 0.1f));
-            door.Register(box, sr, h);           // 열릴 때 개폐존 높이만큼 위로 올라간다
+            // 열림 방향(맵 gate.open_dir, 기본 위 ↑). 세로로 열리면 존 높이(h), 가로로 열리면 폭(w)만큼 이동해 통로를 완전히 비운다.
+            Vector2 openDir = GridMap.DirToVector(s.Gate?.OpenDir);
+            if (openDir == Vector2.zero) openDir = Vector2.up;
+            openDir = openDir.normalized;
+            float dist = Mathf.Abs(openDir.y) >= Mathf.Abs(openDir.x) ? h : w;
+            door.Register(box, sr, (Vector3)(openDir * dist));   // 열릴 때 이 벡터만큼 미끄러진다
 
             door.SetOpenImmediate(false);        // 기본 닫힘(막힘) — 최초 배치는 연출 없이
             det.OnStateChanged += door.SetOpen;  // 광량 임계 통과 시 천천히 여닫이

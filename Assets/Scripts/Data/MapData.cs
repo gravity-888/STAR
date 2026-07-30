@@ -100,6 +100,8 @@ namespace TowardTheStars.Data
     public class GateData
     {
         [JsonProperty("pos")] public int[] Pos;
+        // 문이 열릴 때 미끄러지는 방향(화살표 ↑↓←→). 없으면 위(↑). 이동거리는 개폐존 크기에서 자동.
+        [JsonProperty("open_dir")] public string OpenDir;
     }
 
     public class PrismData

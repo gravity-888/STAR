@@ -70,7 +70,7 @@ Assets/Scripts/
   - **랜즈 아이템(신규)**: `LensItem`(`[x,y]`, 바닥에 떨어진 시작 랜즈 위치. null=없음).
   - **`[JsonExtensionData] Extra`**: 매핑 안 된 나머지 JSON 키를 통째로 수집. `wall`, `wall_x25`, `wall_x41` 등 스테이지마다 이름이 다른 벽 키를 유연하게 처리하기 위한 장치.
   - **`AllWalls()`**: `Extra`에서 `"wall"`로 시작하는 모든 키를 훑어 벽 셀 좌표를 열거. → 벽 키 이름이 무엇이든 전부 벽으로 취급.
-- **하위 모델**: `GridData`, `CameraSettings`(view_cells·fit_width·pad), `Endpoint`(pos+dir 화살표 **+ `HasLens`** 기본 true), `GateData`, `PrismData`(in/out 방향·fixed), `MirrorData`(id·pos·angle_deg·fixed), `PlatformData`(cells·transmit·MISSING), `DecoyData`, `LadderData`(col·y_span).
+- **하위 모델**: `GridData`, `CameraSettings`(view_cells·fit_width·pad), `Endpoint`(pos+dir 화살표 **+ `HasLens`** 기본 true), `GateData`(pos + **`OpenDir`** 열림 방향), `PrismData`(in/out 방향·fixed), `MirrorData`(id·pos·angle_deg·fixed), `PlatformData`(cells·transmit·MISSING), `DecoyData`, `LadderData`(col·y_span).
 
 **원리 노트**: `transmit` 기본값이 `true`(발판은 기본 빛 투과), `MISSING`은 미설계 발판 스킵 플래그. `Endpoint.HasLens` 기본 `true`(=기존 맵은 랜즈 장착 상태). JSON에 없는 필드는 C# 기본값을 쓴다.
 
@@ -173,15 +173,16 @@ Assets/Scripts/
 
 ## 9. Objects / `GateDoor.cs`
 
-**역할**: 게이트 개폐부(문). 수광부가 열리면 **위로 천천히 슬라이드**해 통로를 뚫고, 닫히면 천천히 내려와 막는다.
+**역할**: 게이트 개폐부(문). 수광부가 열리면 **지정 방향으로 천천히 슬라이드**해 통로를 뚫고, 닫히면 원위치로 돌아와 막는다. 열림 방향은 맵 `gate.open_dir`(기본 ↑), 이동거리는 개폐존 크기에서 자동.
 
-- **필드**: `slideDuration`(여닫이 시간), `_blocker`(콜라이더), `_visual`(SpriteRenderer), `_door`(움직일 Transform), `_closedPos`(닫힘 위치), `_slide`(열릴 때 위로 이동 거리 = 개폐존 높이).
-- **`Register(col, sr, slideUp)`**: MapLoader가 문 블럭·이동거리를 등록. 닫힘 위치·대상 Transform 기억.
-- **`SetOpenImmediate(open)`**: 연출 없이 즉시 상태 적용(최초 배치용).
-- **`SetOpen(open)`**: 수광부 `OnStateChanged` 구독 대상. 상태 변화 시 슬라이드 코루틴 시작. **열림은 즉시 콜라이더 해제**(올라가는 중에도 통과), **닫힘은 다 내려온 뒤 콜라이더 활성**(플레이어에 관대 + 열린 문이 빔을 가로막지 않음).
-- **`Slide(open)`**: from→to로 위치와 색을 Lerp. 남은 거리에 비례해 시간을 잡아 중간에 방향이 뒤집혀도 속도가 일정.
+- **필드**: `slideDuration`(여닫이 시간), **`openSortingOffset`**(열림 시 정렬순서에 더할 값, 기본 −20 → 아트 뒤로 가려짐), `_blocker`(콜라이더), `_visual`(SpriteRenderer), `_door`(움직일 Transform), `_closedPos`(닫힘 위치), **`_slideVec`**(열릴 때 이동 벡터=방향×거리), `_sprites`/`_baseOrders`(정렬순서 조정용).
+- **`Register(col, sr, slideOffset)`**: MapLoader가 문 블럭·**이동 벡터**를 등록. 닫힘 위치·대상 Transform·모든 SpriteRenderer의 기본 정렬순서 기억.
+- **`ApplySorting(open)`**: 열림이면 모든 문 스프라이트 정렬순서에 `openSortingOffset`을 더해 **다른 아트 뒤로**, 닫힘이면 원복.
+- **`SetOpenImmediate(open)`**: 연출 없이 즉시 상태·위치·정렬 적용(최초 배치용).
+- **`SetOpen(open)`**: 수광부 `OnStateChanged` 구독 대상. 상태 변화 시 즉시 정렬 적용 + 슬라이드 코루틴 시작. **열림은 즉시 콜라이더 해제**(움직이는 중에도 통과), **닫힘은 다 돌아온 뒤 콜라이더 활성**.
+- **`Slide(open)`**: from→to(`_closedPos + _slideVec` 또는 원위치)로 위치·색 Lerp. 이동 벡터 크기에 비례해 시간을 잡아 중간에 뒤집혀도 속도 일정.
 
-**원리 노트**: 문이 위로 올라가 있어도 콜라이더가 꺼져 있어 빔 추적에 안 걸린다 → 수광부가 문 바로 위(같은 열)에 있어도 사고 없음.
+**원리 노트**: 문이 비켜나 있어도 콜라이더가 꺼져 있어 빔 추적에 안 걸린다. 열림 시 정렬순서를 내려 미끄러져 들어가는 쪽 아트(벽·천장 등)에 자연스럽게 가려진다.
 
 ---
 
@@ -251,7 +252,7 @@ Assets/Scripts/
 - **`BuildGate`**: 수광부 루트 + 시각(→ `GateDetector.visual`, **1칸(40×40)에 `fitToScale`**) + `GateDetector`. 이어 `BuildGateDoor`·`BuildGateExit`.
 - **`BuildGateExit`**: 개폐존 바운딩 박스로 Trigger 생성. **얇은 축(통로 방향)을 그리드 중심 쪽으로 `gateExitInset`만큼 확장** → 표면에 붙기 전/붙은 채로도 통과 판정. `GateExit.Init(det, this, +1)`.
 - **`BuildEntrance`**: 입장 통로에 역방향 Trigger(`GateExit.Init(null, this, -1)`) → 왼쪽으로 나가면 이전 스테이지.
-- **`BuildGateDoor`**: 개폐존을 **하나의 긴 블럭**(콜라이더 1 + 시각 1)으로. 프리팹은 `InstantiateGateDoor`로 존에 맞춤(가로형 90° 회전). `door.Register(box, sr, h)` + `SetOpenImmediate(false)` + 수광부 `OnStateChanged` 구독.
+- **`BuildGateDoor`**: 개폐존을 **하나의 긴 블럭**(콜라이더 1 + 시각 1)으로. 프리팹은 `InstantiateGateDoor`로 존에 맞춤(가로형 90° 회전). **`gate.open_dir`(기본 ↑)로 열림 벡터 계산**(세로 이동=존 높이·가로 이동=존 폭) → `door.Register(box, sr, 벡터)` + `SetOpenImmediate(false)` + 수광부 `OnStateChanged` 구독.
 
 ### 11.7 기타 배치
 - **`BuildDecoys`**: 가짜 광학 표식(45° 마름모).

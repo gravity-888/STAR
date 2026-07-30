@@ -18,7 +18,7 @@
 - 거울 거치대 = **바닥/천장 2종 재도입**(`mirrorMountPrefab`·`mirrorMountCeilingPrefab`). 코드가 거울마다 위/아래 중 **가까운 지지면**을 골라 자동 배치 — 아래=바닥에 세움, 위(발판=천장)=**뒤집어 매닮**. stage4 천장 거울(발판 `mirror_relation:above`인 M1·M7)이 자동 처리(하드코딩 없음). 천장 전용 아트 10×80.
 - 횃불(`torchPrefab`) 바닥에 세움, 발판 윗면을 **지형과 같은 높이(y+0.5)로 올림**, 타일(지형·벽·발판) **칸에 정확 정합**, 사다리 **1칸 조각 세로 반복**, **`artScale` 표시배율**(아트만 확대, 콜라이더 불변).
 
-**맵 에디터 신설·확장**: [`tools/map-editor.html`](tools/map-editor.html) — 브라우저 단일파일. 격자에 전 요소 배치 → **스키마 JSON 입출력**(라운드트립 검증), 카메라 이동범위·화면크기 시각화(게임 계산 재현). **지형 타입칠(잔디/땅/실내)·광원(횃불) has_lens 토글·시작 랜즈(바닥) 배치·스테이지 추가/삭제(＋/－, `stage_order` 내보냄)** 지원. 전체 스크립트 해설 [`SCRIPTS.md`](SCRIPTS.md), C# 문법사전 [`CSHARP_SYNTAX.md`](CSHARP_SYNTAX.md).
+**맵 에디터 신설·확장**: [`tools/map-editor.html`](tools/map-editor.html) — 브라우저 단일파일. 격자에 전 요소 배치 → **스키마 JSON 입출력**(라운드트립 검증), 카메라 이동범위·화면크기 시각화(게임 계산 재현). **지형 타입칠(잔디/땅/실내)·광원(횃불) has_lens 토글·시작 랜즈(바닥) 배치·게이트 열림방향·스테이지 추가/삭제(＋/－, `stage_order` 내보냄)** 지원. 전체 스크립트 해설 [`SCRIPTS.md`](SCRIPTS.md), C# 문법사전 [`CSHARP_SYNTAX.md`](CSHARP_SYNTAX.md).
 
 **후속 추가(2026-07-30)**:
 - **지형 아트 3종**: `terrainGrassPrefab`·`terrainDirtPrefab`·`terrainIndoorPrefab`(+공통 폴백 `terrainPrefab`). 맵의 `terrain_type`(칸별 `"x,y"→grass|dirt|indoor`)·`terrain_type_default`(기본 `dirt`)로 지정. 색 폴백 초록/갈색/회색.
@@ -110,6 +110,7 @@ Assets/Scripts/
   - `terrain_type`: `{ "x,y": "grass|dirt|indoor" }` 칸별 지형 타입 오버라이드. `terrain_type_default`(없으면 `"dirt"`). 미지정 칸=기본. (지형 위치 자체는 여전히 `terrain` = col→높이)
   - `source.has_lens`: 시작 시 랜즈 장착 여부(기본 `true`). `false`면 시작 시 빔 없음.
   - `lens_item: [x,y]`: 바닥에 떨어진 시작 랜즈 위치(획득 대상). 있으면 그 스테이지에서 F키 장착/해제 활성.
+  - `gate.open_dir`(화살표 `↑↓←→`, 기본 `↑`): 게이트 문이 열릴 때 미끄러지는 방향. 이동거리는 개폐존 크기에서 자동(세로=높이·가로=폭). 문은 열릴 때 정렬순서가 내려가 **다른 아트 뒤로 가려짐**(`GateDoor.openSortingOffset`, 기본 −20).
   - `stage_order`(최상위, `stages`와 동렬): 진행 순서·개수 배열(예: `["stage1","stage2","stage3"]`). 있으면 **MapLoader.stageOrder를 덮어씀** → 스테이지 개수를 맵이 결정(엔딩·전환·디버그키 자동 연동, 인스펙터 수정 불필요). 없으면 인스펙터 값 폴백. `ApplyStageOrderFromMap()`이 부팅 시(StartGame 전)와 Build에서 반영.
   - 현재 **stage4만** `has_lens:false` + `lens_item:[8,1]`. 1~3은 필드 없음(= 기존 동작).
 - **맵 에디터(웹툴)**: [`tools/map-editor.html`](tools/map-editor.html) — 격자에 지형(+타입칠 잔디/땅/실내)·벽·발판·사다리·광원(횃불, `has_lens` 토글·방향)·**시작 랜즈(바닥)**·거울(각도·고정)·프리즘·게이트·개폐존·스폰 등을 배치하고 **이 스키마 그대로 JSON 출력**(내보내기) + 기존 맵 **불러오기**. 위 신규 필드 전부 **라운드트립 지원**. 브라우저에서 파일을 열어 사용(설치 불필요). 좌표 y=위로 증가, 거울 각도 22.5° 스냅. (P1 MVP — 빛 경로 미리보기·undo 등은 미구현)

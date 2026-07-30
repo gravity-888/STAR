@@ -123,7 +123,7 @@ const state = {
   cur:"stage1", tool:"terrain",
   view:{ox:60, oy:-40, cell:26},          // oy는 아래(원점) 여백 — draw에서 y-flip
   aspect:16/9,                            // 게임 화면 가로/세로 비율(카메라 계산용, 저장 안 됨)
-  brush:{ angle:45, dir:"↙", fixed:false, transmit:true, prismOut:new Set(["→","↗"]), prismFixed:false, tType:"grass", hasLens:true },
+  brush:{ angle:45, dir:"↙", fixed:false, transmit:true, prismOut:new Set(["→","↗"]), prismFixed:false, tType:"grass", hasLens:true, gateDir:"↑" },
   sel:null,                                // 선택된 거울 인덱스
 };
 const S = ()=>state.stages[state.cur];
@@ -182,7 +182,7 @@ function draw(){
   if(s.spawn) marker(s.spawn,"#ffffff","S");
   if(s.exitSpawn) marker(s.exitSpawn,"#bcd0ff","E");
   for(const d of s.decoys) marker(d,"#e65a5a","·");
-  if(s.gate) marker(s.gate,"#4de676","G");
+  if(s.gate){ marker(s.gate,"#4de676","G"); arrowGlyph(s.gate, s.gate.openDir||"↑", "#4de676"); }
   if(s.prism){ marker(s.prism,"#f272f2","P"); for(const a of s.prism.out) arrowGlyph(s.prism,a,"#f272f2"); }
   if(s.source){ const mounted=s.source.hasLens!==false; marker(s.source, mounted?"#ffe64d":"#8a7a30", "◎"); if(mounted) arrowGlyph(s.source,s.source.dir,"#ffe64d"); }
   if(s.lensItem) marker(s.lensItem,"#ffd24d","◇");
@@ -222,7 +222,7 @@ function apply(gx,gy,erase){
     case "entrance":toggleSet(s.entrance,k,erase); break;
     case "source":  s.source= erase?null:{x:gx,y:gy,dir:b.dir,hasLens:b.hasLens}; break;
     case "lensItem":s.lensItem= erase?null:{x:gx,y:gy}; break;
-    case "gate":    s.gate= erase?null:{x:gx,y:gy}; break;
+    case "gate":    s.gate= erase?null:{x:gx,y:gy,openDir:b.gateDir}; break;
     case "spawn":   s.spawn= erase?null:{x:gx,y:gy}; break;
     case "exitSpawn": s.exitSpawn= erase?null:{x:gx,y:gy}; break;
     case "prism":   s.prism= erase?null:{x:gx,y:gy,out:[...b.prismOut],fixed:b.prismFixed}; break;
@@ -322,6 +322,11 @@ function buildProp(){ const p=document.getElementById("prop"), t=state.tool, b=s
     rh.querySelector("#hl").onchange=e=>{ b.hasLens=e.target.checked; if(S().source) S().source.hasLens=e.target.checked; draw(); };
     p.appendChild(document.createElement("div")).className="small";
     p.lastChild.textContent="광원=횃불. 해제하면 시작 시 빔이 없고, 플레이어가 '시작 랜즈'를 주워 F로 장착해야 발사됩니다(게임에선 횃불이 바닥에 자동으로 섬).";
+  } else if(t==="gate"){
+    row(`<label>열림 방향(문이 미끄러지는 쪽)</label>`);
+    p.appendChild(arrowPicker("single", b.gateDir, a=>{ if(a==="·")return; b.gateDir=a; if(S().gate)S().gate.openDir=a; draw(); buildProp(); }));
+    p.appendChild(document.createElement("div")).className="small";
+    p.lastChild.textContent="게이트 문이 열릴 때 이 방향으로 개폐존 크기만큼 미끄러져 사라집니다(기본 ↑, 상하/좌우 권장). 열리면 다른 아트 뒤로 가려집니다.";
   } else if(t==="lensItem"){
     p.innerHTML=`<div class="small">바닥에 떨어진 시작 랜즈 위치. 플레이어가 닿아 F로 줍고, 횃불 근처에서 F로 장착/해제합니다. 좌클릭=배치, 우클릭=삭제.</div>`;
   } else if(t==="tType"){
@@ -378,7 +383,7 @@ function exportData(){ const out={ unit:{cell_px:40,unity_world_per_cell:1.0}, s
     if(s.source){ st.source={pos:[s.source.x,s.source.y],dir:s.source.dir}; if(s.source.hasLens===false) st.source.has_lens=false; }
     if(s.lensItem) st.lens_item=[s.lensItem.x,s.lensItem.y];
     st.prism = s.prism ? {pos:[s.prism.x,s.prism.y],out:s.prism.out,fixed:s.prism.fixed} : null;
-    if(s.gate) st.gate={pos:[s.gate.x,s.gate.y]};
+    if(s.gate){ st.gate={pos:[s.gate.x,s.gate.y]}; if(s.gate.openDir && s.gate.openDir!=="↑") st.gate.open_dir=s.gate.openDir; }
     st.mirrors=s.mirrors.map((m,i)=>({id:"M"+(i+1),pos:[m.x,m.y],angle_deg:m.angle,fixed:m.fixed}));
     const plats=[]; if(s.platT.size)plats.push({id:"P_pass",cells:[...s.platT].map(unkey),transmit:true}); if(s.platS.size)plats.push({id:"P_block",cells:[...s.platS].map(unkey),transmit:false}); st.platforms=plats;
     st.ladders=groupLadders(s.ladder);
@@ -420,7 +425,7 @@ function importData(obj){ const st=obj.stages||obj;
     for(const a of (src.entrance||[])) s.entrance.add(key(a[0],a[1]));
     if(src.source?.pos) s.source={x:src.source.pos[0],y:src.source.pos[1],dir:src.source.dir||"↓",hasLens:src.source.has_lens!==false};
     if(src.lens_item) s.lensItem={x:src.lens_item[0],y:src.lens_item[1]};
-    if(src.gate?.pos) s.gate={x:src.gate.pos[0],y:src.gate.pos[1]};
+    if(src.gate?.pos) s.gate={x:src.gate.pos[0],y:src.gate.pos[1],openDir:src.gate.open_dir||"↑"};
     if(src.prism?.pos) s.prism={x:src.prism.pos[0],y:src.prism.pos[1],out:src.prism.out||[],fixed:!!src.prism.fixed};
     if(src.spawn) s.spawn={x:src.spawn[0],y:src.spawn[1]};
     if(src.exit_spawn) s.exitSpawn={x:src.exit_spawn[0],y:src.exit_spawn[1]};
