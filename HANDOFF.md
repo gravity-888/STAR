@@ -18,7 +18,7 @@
 - 거울 거치대 = **바닥/천장 2종 재도입**(`mirrorMountPrefab`·`mirrorMountCeilingPrefab`). 코드가 거울마다 위/아래 중 **가까운 지지면**을 골라 자동 배치 — 아래=바닥에 세움, 위(발판=천장)=**뒤집어 매닮**. stage4 천장 거울(발판 `mirror_relation:above`인 M1·M7)이 자동 처리(하드코딩 없음). 천장 전용 아트 10×80.
 - 횃불(`torchPrefab`) 바닥에 세움, 발판 윗면을 **지형과 같은 높이(y+0.5)로 올림**, 타일(지형·벽·발판) **칸에 정확 정합**, 사다리 **1칸 조각 세로 반복**, **`artScale` 표시배율**(아트만 확대, 콜라이더 불변).
 
-**맵 에디터 신설·확장**: [`tools/map-editor.html`](tools/map-editor.html) — 브라우저 단일파일. 격자에 전 요소 배치 → **스키마 JSON 입출력**(라운드트립 검증), 카메라 이동범위·화면크기 시각화(게임 계산 재현). **지형 타입칠(잔디/땅/실내)·광원(횃불) has_lens 토글·시작 랜즈(바닥) 배치·게이트 열림방향·스테이지 추가/삭제(＋/－, `stage_order` 내보냄)** 지원. 전체 스크립트 해설 [`SCRIPTS.md`](SCRIPTS.md), C# 문법사전 [`CSHARP_SYNTAX.md`](CSHARP_SYNTAX.md).
+**맵 에디터 신설·확장**: [`tools/map-editor.html`](tools/map-editor.html) — 브라우저 단일파일. 격자에 전 요소 배치 → **스키마 JSON 입출력**(라운드트립 검증), 카메라 이동범위·화면크기 시각화(게임 계산 재현). **지형 타입칠(잔디/땅/실내)·광원(횃불) has_lens 토글·시작 랜즈(바닥) 배치·게이트 열림방향·스테이지별 배경#·스테이지 추가/삭제(＋/－, `stage_order` 내보냄)** 지원. 전체 스크립트 해설 [`SCRIPTS.md`](SCRIPTS.md), C# 문법사전 [`CSHARP_SYNTAX.md`](CSHARP_SYNTAX.md).
 
 **후속 추가(2026-07-30)**:
 - **지형 아트 3종**: `terrainGrassPrefab`·`terrainDirtPrefab`·`terrainIndoorPrefab`(+공통 폴백 `terrainPrefab`). 맵의 `terrain_type`(칸별 `"x,y"→grass|dirt|indoor`)·`terrain_type_default`(기본 `dirt`)로 지정. 색 폴백 초록/갈색/회색.
@@ -113,6 +113,7 @@ Assets/Scripts/
   - `source.has_lens`: 시작 시 랜즈 장착 여부(기본 `true`). `false`면 시작 시 빔 없음.
   - `lens_item: [x,y]`: 바닥에 떨어진 시작 랜즈 위치(획득 대상). 있으면 그 스테이지에서 F키 장착/해제 활성.
   - `gate.open_dir`(화살표 `↑↓←→`, 기본 `↑`): 게이트 문이 열릴 때 미끄러지는 방향. 이동거리는 개폐존 크기에서 자동(세로=높이·가로=폭). 문은 열릴 때 정렬순서가 내려가 **다른 아트 뒤로 가려짐**(`GateDoor.openSortingOffset`, 기본 −20).
+  - `background`(스테이지별, 정수): 배경 아트 인덱스 → `MapLoader.stageBackgrounds[인덱스]`. 없으면 **stageOrder 상 그 스테이지의 순번**을 사용(스테이지가 늘면 배경 배열도 그만큼 늘려 채움). 슬롯이 비거나 범위 밖이면 배경 없음.
   - `stage_order`(최상위, `stages`와 동렬): 진행 순서·개수 배열(예: `["stage1","stage2","stage3"]`). 있으면 **MapLoader.stageOrder를 덮어씀** → 스테이지 개수를 맵이 결정(엔딩·전환·디버그키 자동 연동, 인스펙터 수정 불필요). 없으면 인스펙터 값 폴백. `ApplyStageOrderFromMap()`이 부팅 시(StartGame 전)와 Build에서 반영.
   - 현재 **stage4만** `has_lens:false` + `lens_item:[8,1]`. 1~3은 필드 없음(= 기존 동작).
 - **맵 에디터(웹툴)**: [`tools/map-editor.html`](tools/map-editor.html) — 격자에 지형(+타입칠 잔디/땅/실내)·벽·발판·사다리·광원(횃불, `has_lens` 토글·방향)·**시작 랜즈(바닥)**·거울(각도·고정)·프리즘·게이트·개폐존·스폰 등을 배치하고 **이 스키마 그대로 JSON 출력**(내보내기) + 기존 맵 **불러오기**. 위 신규 필드 전부 **라운드트립 지원**. 브라우저에서 파일을 열어 사용(설치 불필요). 좌표 y=위로 증가, 거울 각도 22.5° 스냅. (P1 MVP — 빛 경로 미리보기·undo 등은 미구현)
@@ -241,7 +242,7 @@ Assets/Scripts/
 - **게이트/문 색 피드백**: 게이트 수광부·개폐부는 열림/닫힘 시 `visual`의 **첫 SpriteRenderer 색을 코드가 바꾼다**(초록/반투명). 색으로 상태를 보이려면 루트에 대표 SpriteRenderer를 두거나, 그 방식이 싫으면 애니메이터/자식 스크립트로 대체(그 경우 색 틴트는 무시됨 — null-safe).
 - **랜즈 방향 점**: `lensPrefab`을 넣으면 플레이스홀더 방향 표시 점은 자동 생략(프리팹이 방향을 표현한다고 가정).
 
-**슬롯 목록(21종)**: `terrainPrefab`(공통 폴백) · `terrainGrassPrefab`(잔디) · `terrainDirtPrefab`(땅) · `terrainIndoorPrefab`(실내) · `wallPrefab` · `wallGlassPrefab`(빛 통과 벽) · `platformPrefab`(투과 발판) · `platformSolidPrefab`(차단 발판) · `ladderPrefab` · `lensPrefab`(랜즈 — 광원 시각 + 아이템/소지 시각 겸용) · `torchPrefab`(랜즈 거치 횃불) · `mirrorPrefab`(회전 반사면) · `mirrorFixedPrefab`(고정 거울) · `mirrorMountPrefab`(바닥 거치대) · `mirrorMountCeilingPrefab`(천장 거치대 10×80) · `prismPrefab` · `gatePrefab`(수광부, 1칸 fitToScale) · `gateDoorPrefab`(문) · `decoyPrefab` · `spawnPrefab` · `playerPrefab`. (랜즈 아이템·소지 시각은 별도 슬롯 없이 `lensPrefab` 재사용)
+**슬롯 목록(21종)**: `terrainPrefab`(공통 폴백) · `terrainGrassPrefab`(잔디) · `terrainDirtPrefab`(땅) · `terrainIndoorPrefab`(실내) · `wallPrefab` · `wallGlassPrefab`(빛 통과 벽) · `platformPrefab`(투과 발판) · `platformSolidPrefab`(차단 발판) · `ladderPrefab` · `lensPrefab`(랜즈 — 광원 시각 + 아이템/소지 시각 겸용) · `torchPrefab`(랜즈 거치 횃불) · `mirrorPrefab`(회전 반사면) · `mirrorFixedPrefab`(고정 거울) · `mirrorMountPrefab`(바닥 거치대) · `mirrorMountCeilingPrefab`(천장 거치대 10×80) · `prismPrefab` · `gatePrefab`(수광부, 1칸 fitToScale) · `gateDoorPrefab`(문) · `decoyPrefab` · `spawnPrefab` · `playerPrefab`. (랜즈 아이템·소지 시각은 별도 슬롯 없이 `lensPrefab` 재사용) + **`stageBackgrounds`(배경 프리팹 배열 — 스테이지 수만큼 채움, 맨 뒤 정렬 `Z_BACKGROUND=-100`)**.
 
 **구조 메모**: 랜즈=`lensPrefab`+`torchPrefab`(랜즈는 위치 중심, 횃불은 바닥에 세움·회전X). 거울=`mirrorPrefab` 하나(코드가 회전; 아트 기본각 보정 `mirrorArtAngleOffset`=90, 시작각 ±45° 랜덤). **게이트 문**은 개폐존 전체를 덮는 **긴 블럭 1개**(열리면 위로 슬라이드). 수광부(`gatePrefab`)는 문과 **별개 위치의 오브젝트**.
 

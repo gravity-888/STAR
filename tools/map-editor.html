@@ -48,6 +48,7 @@
     <span class="sp"></span>
     <label class="hint">W<input id="gw" type="number" min="4" max="120" style="width:52px"></label>
     <label class="hint">H<input id="gh" type="number" min="4" max="120" style="width:52px"></label>
+    <label class="hint" title="배경 아트 인덱스(MapLoader.stageBackgrounds). 비우면 스테이지 순번 자동">배경#<input id="bg" type="number" min="0" max="99" style="width:44px"></label>
     <button id="btnImport">불러오기</button>
     <button id="btnExport">내보내기(JSON)</button>
   </header>
@@ -113,6 +114,7 @@ function blankStage(){ return {
   mirrors:[], decoys:[],
   source:null, gate:null, prism:null, spawn:null, exitSpawn:null, camera:null,
   lensItem:null,                          // 바닥에 떨어진 시작 랜즈(줍기 대상). null=없음
+  bg:null,                                // 배경 아트 인덱스(null=미지정 → 스테이지 순번 자동)
 };}
 const TCOLOR = { grass:"#3a9a48", dirt:"#5a4230", indoor:"#6a6a78" };
 function terrainTypeAt(s,x,y){ return s.terrainType[key(x,y)] || "dirt"; }
@@ -362,7 +364,8 @@ function buildProp(){ const p=document.getElementById("prop"), t=state.tool, b=s
 }
 function setAngle(a){ a=((a%360)+360)%360; state.brush.angle=a; if(state.tool==="mirror"&&state.sel!=null){ S().mirrors[state.sel].angle=a; } draw(); buildProp(); }
 function setCam(k,v){ const s=S(); if(!s.camera) s.camera={view_cells:0,fit_width:false,top_pad:0,bottom_pad:0,side_pad:0}; s.camera[k]=v; draw(); }
-function syncGrid(){ document.getElementById("gw").value=S().W; document.getElementById("gh").value=S().H; }
+function syncGrid(){ document.getElementById("gw").value=S().W; document.getElementById("gh").value=S().H; document.getElementById("bg").value = S().bg==null ? "" : S().bg; }
+document.getElementById("bg").oninput=e=>{ const v=e.target.value; S().bg = (v===""||isNaN(+v)) ? null : Math.max(0,Math.round(+v)); };
 
 // 그리드 크기: 입력 즉시 반영(oninput). 4~200칸.
 function setGrid(w,h){ const s=S(); if(w!=null&&!isNaN(w)&&w>0) s.W=Math.max(4,Math.min(200,Math.round(w))); if(h!=null&&!isNaN(h)&&h>0) s.H=Math.max(4,Math.min(200,Math.round(h))); document.getElementById("gw").value=s.W; document.getElementById("gh").value=s.H; draw(); }
@@ -380,6 +383,7 @@ function doClearStage(){ const W=S().W,H=S().H; state.stages[state.cur]=blankSta
 function exportData(){ const out={ unit:{cell_px:40,unity_world_per_cell:1.0}, stage_order:[...state.stageList], stages:{} };
   for(const k of state.stageList){ const s=state.stages[k]; const st={};
     st.stage=+k.replace("stage",""); st.grid={W:s.W,H:s.H};
+    if(s.bg!=null) st.background=s.bg;   // 배경 아트 인덱스(미지정이면 생략 → 게임이 스테이지 순번 사용)
     if(s.source){ st.source={pos:[s.source.x,s.source.y],dir:s.source.dir}; if(s.source.hasLens===false) st.source.has_lens=false; }
     if(s.lensItem) st.lens_item=[s.lensItem.x,s.lensItem.y];
     st.prism = s.prism ? {pos:[s.prism.x,s.prism.y],out:s.prism.out,fixed:s.prism.fixed} : null;
@@ -413,6 +417,7 @@ function importData(obj){ const st=obj.stages||obj;
   state.stageList = list; state.stages = {};
   for(const k of list){ const src=st[k]; const s=blankStage(); if(src){
     s.W=src.grid?.W||30; s.H=src.grid?.H||15;
+    if(typeof src.background==="number" && src.background>=0) s.bg=src.background;
     if(src.terrain) for(const [c,h] of Object.entries(src.terrain)) s.terrain[c]=h;
     if(src.terrain_type) for(const [kk,v] of Object.entries(src.terrain_type)) s.terrainType[kk]=v;
     const wt=new Set((src.wall_transmit||[]).map(a=>key(a[0],a[1]))); s.wallT=new Set(wt);

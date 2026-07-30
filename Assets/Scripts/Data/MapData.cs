@@ -23,6 +23,8 @@ namespace TowardTheStars.Data
     public class StageData
     {
         [JsonProperty("stage")] public int Stage;
+        // 배경 아트 인덱스(MapLoader.stageBackgrounds 배열). -1(미지정)이면 stageOrder 상 이 스테이지의 순번을 사용.
+        [JsonProperty("background")] public int Background = -1;
         [JsonProperty("grid")] public GridData Grid;
         [JsonProperty("camera")] public CameraSettings Camera;   // 스테이지별 카메라 오버라이드(선택)
         [JsonProperty("jump_units")] public float JumpUnits;

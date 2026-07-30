@@ -119,7 +119,11 @@ namespace TowardTheStars.Level
         public GameObject spawnPrefab;
         public GameObject playerPrefab;
 
+        [Header("스테이지 배경 (스테이지 수만큼 채움 — 인덱스 = stageOrder 순번, 맵의 background로 개별 지정 가능)")]
+        public GameObject[] stageBackgrounds;
+
         const int Z_TERRAIN = 0, Z_PLATFORM = 1, Z_OBJECT = 5, Z_SPAWN = 8;
+        const int Z_BACKGROUND = -100;   // 모든 아트 뒤(지형 0보다 훨씬 아래)
 
         // 발판 기하: 두께 0.4, 윗면을 칸 위 모서리(y+0.5)에 맞춘다 → 지형(1×1 블록)과 서는 높이가 같아진다.
         //   중심은 칸에서 (0.5 - 0.4/2) = 0.3칸 위. 빔은 칸 중심선을 지나지만 빛 차단 발판은
@@ -195,7 +199,8 @@ namespace TowardTheStars.Level
             _root = new GameObject($"Level_{stageKey}").transform;
             _root.SetParent(transform, false);
 
-            // 지형/발판/벽 (비광학)
+            // 배경(가장 뒤) → 지형/발판/벽 (비광학)
+            BuildBackground(stage);
             BuildTerrain(stage);
             BuildWalls(stage);
             BuildPlatforms(stage);
@@ -333,6 +338,22 @@ namespace TowardTheStars.Level
         }
 
         // ---------- 비광학 배치 ----------
+
+        // 스테이지 배경: stageBackgrounds[인덱스]를 레벨 중앙에 깔고 모든 아트 뒤로 보낸다.
+        //   인덱스 = 맵의 background(>=0) 우선, 없으면 stageOrder 상 이 스테이지의 순번. 슬롯이 비거나 범위를 벗어나면 배경 없음.
+        void BuildBackground(StageData s)
+        {
+            if (stageBackgrounds == null || stageBackgrounds.Length == 0) return;
+            int idx = s.Background >= 0 ? s.Background : System.Array.IndexOf(stageOrder, stageKey);
+            if (idx < 0 || idx >= stageBackgrounds.Length || stageBackgrounds[idx] == null) return;
+
+            int w = s.Grid != null ? s.Grid.W : 30, h = s.Grid != null ? s.Grid.H : 15;
+            var go = Instantiate(stageBackgrounds[idx], _root, false);
+            go.name = "background";
+            go.transform.position = new Vector3((w - 1) * 0.5f, (h - 1) * 0.5f, 0f);   // 그리드 중앙
+            foreach (var sr in go.GetComponentsInChildren<SpriteRenderer>(true))
+                sr.sortingOrder = Z_BACKGROUND + sr.sortingOrder;   // 내부 상대순서 유지, 전체는 맨 뒤로
+        }
 
         void BuildTerrain(StageData s)
         {

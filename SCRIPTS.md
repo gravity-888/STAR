@@ -65,7 +65,7 @@ Assets/Scripts/
 
 - **`UnifiedData`**: 최상위. `unit`(단위 정보), **`StageOrder`(`stage_order`, 선택 — 진행 순서·개수 배열)**, `stages`(스테이지 딕셔너리, 키 `"stage1"`~). 스테이지 개수는 이 딕셔너리·`stage_order`로 결정되며 코드에 하드코딩되지 않는다.
 - **`StageData`**: 한 스테이지의 전부.
-  - `Grid`(W·H), `Camera`(스테이지별 카메라 오버라이드), `Source`(광원), `Prism`(없으면 null), `Gate`(수광부 위치).
+  - `Grid`(W·H), `Camera`(스테이지별 카메라 오버라이드), `Source`(광원), `Prism`(없으면 null), `Gate`(수광부 위치), **`Background`**(배경 아트 인덱스, −1=미지정→순번 사용).
   - `Mirrors`·`Platforms`·`Decoys`·`Ladders` 리스트, `Spawn`/`ExitSpawn`(정/역방향 스폰), `GateOpenZone`(문 칸들), `WallTransmit`(빛 통과 벽), `Entrance`(좌측벽 구멍), `Terrain`(열→높이).
   - **지형 타입(신규)**: `TerrainType`(`"x,y"→"grass"|"dirt"|"indoor"` 칸별 오버라이드)·`TerrainTypeDefault`(미지정 칸 기본, 기본값 `"dirt"`). 지형 **위치**는 여전히 `Terrain`(열→높이)이 정하고, 이건 **칸별 시각 타입만** 지정.
   - **랜즈 아이템(신규)**: `LensItem`(`[x,y]`, 바닥에 떨어진 시작 랜즈 위치. null=없음).
@@ -209,6 +209,7 @@ Assets/Scripts/
 - 아트: `artScale`(표시 배율, 기본 2 — **콜라이더·판정 불변, 보이는 크기만**).
 - 거울: `mirrorArtAngleOffset`(아트 기본각 90), `randomizeMirrors`, `mirrorRandomSteps`(2=±45°).
 - 프리팹 슬롯 **21종**(비면 색 사각형 폴백). 지형 3종(`terrainGrass/Dirt/Indoor` + 공통 폴백 `terrainPrefab`), 거울 거치대 2종(`mirrorMountPrefab` 바닥 / `mirrorMountCeilingPrefab` 천장 10×80) 포함.
+- **`stageBackgrounds`**(배경 프리팹 **배열**): 스테이지 수만큼 채운다. 인덱스 = 맵 `background`(있으면) 또는 stageOrder 순번. 비면 배경 없음.
 - 상수: `Z_*`(정렬순서), `PLATFORM_*`(발판 기하 — 윗면을 칸 위 모서리 y+0.5에 맞춰 지형과 높이 일치).
 
 ### 11.2 생명주기
@@ -240,6 +241,7 @@ Assets/Scripts/
 - **`EnsureUnsolvedStart(tracer)`**: 게이트가 열려 있으면 거울을 다시 랜덤화하고 재추적, 닫힐 때까지(최대 20회). 로컬 함수 `AnyOpen()`으로 판정.
 
 ### 11.5 비광학 배치
+- **`BuildBackground`**: `stageBackgrounds[인덱스]`를 레벨 중앙에 배치하고 모든 SpriteRenderer를 `Z_BACKGROUND`(−100) 기준으로 맨 뒤로. 인덱스=맵 `background`(≥0) 또는 stageOrder 순번. 슬롯 비거나 범위 밖이면 배경 없음(폴백). Build에서 지형보다 먼저 호출.
 - **`BuildTerrain`**: `terrain` 딕셔너리(열→높이)로 0..높이 칸을 솔리드 타일로 채움. **칸마다 `TerrainTypeAt`(terrain_type 오버라이드 → 기본 dirt)로 타입을 정해 `TerrainStyle`이 잔디/땅/실내 프리팹·색 선택**(타입 슬롯 비면 `terrainPrefab`, 그것도 비면 색 사각형). `fitToScale`로 1×1칸에 정확히 맞춤(이웃과 연결). 빛 차단은 벽 담당.
 - **`BuildWalls`**: `AllWalls()` 순회. `entrance` 칸은 벽 생략(구멍). `wall_transmit` 칸은 반투명 + `BeamTransparent`(빛만 통과). 나머지는 불투명 벽(빔 정지).
 - **`BuildPlatforms`**: 발판 셀마다 얇은(0.4) 솔리드. **윗면을 y+0.5로 올려 지형과 높이 일치**(`PLATFORM_CY`). `transmit`면 파랑 + `BeamTransparent`, 아니면 남색(빛 차단). `fitToScale`로 가로 1칸 정합.
