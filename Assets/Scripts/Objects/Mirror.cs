@@ -16,6 +16,14 @@ namespace TowardTheStars.Objects
 
         public float AngleDeg => angleDeg;
         public bool IsFixed => isFixed;
+        public string Id;   // 맵의 거울 id(진행상태 저장/복원 키)
+
+        // 현재 각도를 직접 지정(진행상태 복원용). 22.5° 배수로 저장되므로 Q/E 정합 유지.
+        public void SetAngle(float a)
+        {
+            angleDeg = Mathf.Repeat(a, 360f);
+            ApplyVisualRotation();
+        }
 
         public void Init(float solutionAngle, bool isFixed, float visualAngleOffset = 0f)
         {

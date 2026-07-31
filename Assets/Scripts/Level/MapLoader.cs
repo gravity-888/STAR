@@ -47,6 +47,19 @@ namespace TowardTheStars.Level
 
         readonly List<Mirror> _mirrors = new();   // 이번 스테이지의 회전 가능 거울(정답 정렬·재랜덤 대상)
 
+        // 스테이지별 진행상태(다른 맵 갔다 돌아와도 이어지게). 새 게임 시작 시 초기화.
+        class StageProgress
+        {
+            public readonly Dictionary<string, float> mirrors = new();   // 거울 id → 현재 각도
+            public bool gateOpen;      // 게이트를 열어 놨는지(래치)
+            public bool hasLens;       // 이 스테이지가 랜즈 장착 메커닉을 쓰는지
+            public bool lensMounted;   // 랜즈를 횃불에 장착했는지
+        }
+        readonly Dictionary<string, StageProgress> _progress = new();
+        string _currentStageKey;      // 지금 씬에 빌드돼 있는 스테이지(떠나기 전 상태 저장 대상)
+        bool _skipCapture;            // Restart 등: 재빌드 전 현재 상태를 저장하지 않음
+        StageProgress _restore;       // 이번 빌드에 복원할 진행상태(없으면 null)
+
         // 숫자열 1~9 → stageOrder 인덱스 0~8. Key enum 산술 대신 명시 배열(할당 1회).
         static readonly Key[] DigitKeys =
         {
@@ -195,6 +208,11 @@ namespace TowardTheStars.Level
                 return;
             }
 
+            // 떠나기 전 현재 스테이지 진행상태 저장 → 새 스테이지에 복원할 상태 로드(다른 맵 갔다 와도 이어짐).
+            if (!_skipCapture) CaptureProgress();
+            _skipCapture = false;
+            _progress.TryGetValue(stageKey, out _restore);
+
             Clear();
             _mirrors.Clear();
             _root = new GameObject($"Level_{stageKey}").transform;
@@ -234,7 +252,7 @@ namespace TowardTheStars.Level
 
             // 랜덤 초기화가 우연히 게이트를 열어버리면(우회 경로) 닫힌 배치가 나올 때까지 다시 섞는다.
             //   → 항상 "안 풀린 상태"로 시작. 22.5° 배수 랜덤이라 정답 도달성은 유지.
-            if (randomizeMirrors && _mirrors.Count > 0 && !_reverseEntry) EnsureUnsolvedStart(tracer);
+            if (randomizeMirrors && _mirrors.Count > 0 && _restore == null && !_reverseEntry) EnsureUnsolvedStart(tracer);
 
             SetupCamera(stage, player);
 
@@ -242,6 +260,21 @@ namespace TowardTheStars.Level
                       $"프리즘 {(stage.Prism != null ? 1 : 0)} · 사다리 {stage.Ladders?.Count ?? 0}");
 
             _reverseEntry = false;   // 1회성 소비 — 다음 Build는 기본(정방향)
+            _currentStageKey = stageKey;   // 이제 이 스테이지가 씬에 빌드됨
+        }
+
+        // 지금 빌드돼 있는 스테이지(_currentStageKey)의 상태를 저장(거울 각도·게이트 개방·랜즈).
+        void CaptureProgress()
+        {
+            if (_currentStageKey == null || _root == null) return;
+            var p = new StageProgress();
+            foreach (var m in _mirrors)
+                if (m != null && !string.IsNullOrEmpty(m.Id)) p.mirrors[m.Id] = m.AngleDeg;
+            var det = _root.GetComponentInChildren<GateDetector>(true);
+            if (det != null) p.gateOpen = det.IsOpen;
+            var mount = _root.GetComponentInChildren<TorchMount>(true);
+            if (mount != null) { p.hasLens = true; p.lensMounted = mount.Mounted; }
+            _progress[_currentStageKey] = p;
         }
 
         // 이번 진입에 사용할 스폰: 역주행이면 exit_spawn(출구쪽), 아니면 spawn(입장 통로).
@@ -301,14 +334,18 @@ namespace TowardTheStars.Level
         {
             if (_transitioning) return;
             _reverseEntry = false;
+            _progress.Clear();            // 새 게임 → 모든 스테이지 진행상태 초기화
+            _currentStageKey = null;      // 첫 빌드는 저장 대상 없음
             if (stageOrder != null && stageOrder.Length > 0) stageKey = stageOrder[0];
             Build();
         }
 
-        // R키: 현재 스테이지를 처음 상태로 재구축(거울 각도·플레이어 위치 초기화). 퍼즐이 꼬였을 때 구제용.
+        // R키: 현재 스테이지를 처음 상태로 재구축(거울 재랜덤·플레이어 위치 초기화). 퍼즐이 꼬였을 때 구제용.
         public void Restart()
         {
             if (_transitioning) return;
+            _progress.Remove(stageKey);   // 이 스테이지 진행상태 폐기 → 새로 랜덤
+            _skipCapture = true;          // 재빌드 전 현재(꼬인) 상태를 저장하지 않음
             StartCoroutine(Transition(stageKey, false));
         }
 
@@ -492,6 +529,7 @@ namespace TowardTheStars.Level
             var src = go.AddComponent<LightSource>();
             src.Init(dir, 1f);
             bool mounted = s.Source.HasLens;   // 랜즈 장착 여부
+            if (_restore != null && _restore.hasLens) mounted = _restore.lensMounted;   // 저장된 랜즈 상태가 있으면 우선
             src.Emitting = mounted;            // 미장착이면 시작 시 빔 없음
 
             // 횃불(랜즈 거치대) — 랜즈 유무와 무관하게 항상 바닥에 세운다.
@@ -516,6 +554,7 @@ namespace TowardTheStars.Level
         void BuildLensItem(StageData s)
         {
             if (s.LensItem == null || s.LensItem.Length < 2) return;
+            if (_restore != null && _restore.hasLens && _restore.lensMounted) return;   // 이미 장착된 스테이지로 복귀 → 바닥 아이템 없음
             var pos = new Vector2(s.LensItem[0], s.LensItem[1]);
             var go = new GameObject("lens_item");
             go.transform.SetParent(_root, false);
@@ -543,10 +582,14 @@ namespace TowardTheStars.Level
                        prefabRotZ: -m.AngleDeg + artOffset);
 
                 var mirror = go.AddComponent<Mirror>();
+                mirror.Id = m.Id;
                 mirror.Init(m.AngleDeg, m.Fixed, artOffset);   // 기준 = 정답
-                // 퍼즐 초기화: 회전 가능한 거울만 정답에서 랜덤하게 틀어 놓는다(22.5° 배수 → Q/E로 정답 도달 가능).
-                //   단 역주행(이미 푼 스테이지로 복귀)이면 정답 그대로 둔다.
-                if (randomizeMirrors && !_reverseEntry) mirror.RandomizeFromSolution(mirrorRandomSteps);
+                // 복원 우선: 저장된 진행상태가 있으면 그 각도로 되돌린다(다른 맵 갔다 와도 이어짐).
+                //   없으면 — 정방향은 랜덤하게 흐트러뜨리고(새 도전), 역주행은 정답 그대로 둔다.
+                if (_restore != null && !string.IsNullOrEmpty(m.Id) && _restore.mirrors.TryGetValue(m.Id, out float savedAngle))
+                    mirror.SetAngle(savedAngle);
+                else if (randomizeMirrors && !_reverseEntry)
+                    mirror.RandomizeFromSolution(mirrorRandomSteps);
                 if (!m.Fixed) _mirrors.Add(mirror);   // 정답 정렬/재랜덤 대상
 
                 // 거치대: 거울과 같은 x에, 위/아래 중 더 가까운 지지면 쪽에 붙인다.
@@ -589,10 +632,11 @@ namespace TowardTheStars.Level
             // 임시 충전 게이지(수광부 위) — 빛을 받는 동안 채워지고 가득 차면 개방. 나중에 수광부 아트 내부 채움 효과로 교체 예정.
             det.SetGauge(BuildGateGauge(go.transform));
 
+            // 시작 개방 여부: 저장된 진행상태가 있으면 그것, 없으면 역주행(복귀)이면 열림.
+            bool gateStartOpen = _restore != null ? _restore.gateOpen : _reverseEntry;
             // 개폐부(문): gate_open_zone 셀들 — 기본 닫힘(차단), 수광부 충전 완료 시 개방(통과).
-            BuildGateDoor(s, det);
-            // 역주행(이미 푼 스테이지로 복귀): 게이트를 즉시 개방 상태로 프리셋(거울도 정답 유지됨).
-            if (_reverseEntry) det.PresetOpen();
+            BuildGateDoor(s, det, gateStartOpen);
+            if (gateStartOpen) det.PresetOpen();   // 이미 열어 놨던/복귀 스테이지면 즉시 개방·래치
 
             // 통과 감지: 개방 상태에서 플레이어가 개폐부를 지나가면 다음 스테이지로.
             BuildGateExit(s, det);
@@ -690,7 +734,7 @@ namespace TowardTheStars.Level
             go.AddComponent<GateExit>().Init(null, this, -1);   // 역방향 → 이전 스테이지
         }
 
-        void BuildGateDoor(StageData s, GateDetector det)
+        void BuildGateDoor(StageData s, GateDetector det, bool startOpen)
         {
             if (s.GateOpenZone == null || s.GateOpenZone.Count == 0) return;
             var doorGo = new GameObject("gate_door");
@@ -723,7 +767,7 @@ namespace TowardTheStars.Level
             float dist = Mathf.Abs(openDir.y) >= Mathf.Abs(openDir.x) ? h : w;
             door.Register(box, sr, (Vector3)(openDir * dist));   // 열릴 때 이 벡터만큼 미끄러진다
 
-            door.SetOpenImmediate(_reverseEntry); // 연출 없이 초기 배치. 역주행(이미 푼 스테이지 복귀)이면 이미 열린 채로
+            door.SetOpenImmediate(startOpen);    // 연출 없이 초기 배치. 복귀/저장 상태면 이미 열린 채로
             det.OnStateChanged += door.SetOpen;  // 광량 충전 완료/해제 시 천천히 여닫이
         }
 

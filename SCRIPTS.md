@@ -217,9 +217,10 @@ Assets/Scripts/
 - **`Start()`**: **`ApplyStageOrderFromMap()`**(맵의 `stage_order`로 `stageOrder` 확정 — StartGame이 `stageOrder[0]`을 쓰기 전에) 후, `useGameFlow`면 `GameManager.Bootstrap(this)`(타이틀부터), 아니면 `buildOnStart`로 즉시 Build.
 - **`ApplyStageOrderFromMap()`**: mapFile을 파싱해 `stage_order`가 있으면 `stageOrder`에 반영(인스펙터 값은 폴백). Build에서도 파싱 후 동일 적용. → **스테이지 개수·순서를 맵이 결정**, 씬 인스펙터 수정 불필요.
 - **`Update()`**: 전환/일시정지/타이틀(ControlsLocked) 중엔 무시. `R`=Restart, `P`=SolveAllMirrors, `1~4`=GoToIndex.
+- **진행상태 저장/복원**(다른 맵 갔다 와도 이어짐): `_progress`(stageKey→거울 각도·게이트 개방·랜즈 장착). **`CaptureProgress`**가 스테이지를 떠나기 직전(Clear 전) 현재 상태를 저장하고, Build가 새 stageKey의 `_restore`를 로드해 BuildMirrors/BuildGate/BuildLens가 그대로 복원한다. 미방문이면 정방향=랜덤·역방향=정답. `Restart`=그 스테이지 진행 폐기(+`_skipCapture`), `StartGame`=전체 초기화. **메모리 저장(파일 아님)**.
 - **`Build()`** — 핵심 절차:
   1. `mapFile` 파싱 → 스테이지 찾기(실패 시 에러 로그).
-  2. `Clear()` + `_mirrors.Clear()` + `Level_{stageKey}` 루트 생성.
+  2. **떠나는 스테이지 진행 저장**(`CaptureProgress`) + 새 스테이지 `_restore` 로드 → `Clear()` + `_mirrors.Clear()` + `Level_{stageKey}` 루트 생성.
   3. **비광학**: BuildTerrain → Walls → Platforms → Ladders.
   4. **광학**: BuildLens → Mirrors → Prism → Gate.
   5. 기타: Decoys → **BuildLensItem**(바닥 랜즈) → Entrance(역주행 트리거) → Spawn → Player.
