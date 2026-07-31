@@ -3757,6 +3757,63 @@ LineRenderer:
   m_UseWorldSpace: 1
   m_Loop: 0
   m_ApplyActiveColorSpace: 1
+--- !u!1 &509025194
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 509025196}
+  - component: {fileID: 509025195}
+  m_Layer: 0
+  m_Name: GameObject (1)
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &509025195
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 509025194}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 6b91df9c57494bf5886c6bcd2694bb45, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::TowardTheStars.Level.AudioManager
+  bgmTitle: {fileID: 0}
+  bgmPlay: {fileID: 0}
+  bgmEnding: {fileID: 0}
+  bgmVolume: 0.6
+  sfxMirrorRotate: {fileID: 0}
+  sfxGateOpen: {fileID: 0}
+  sfxStageTransition: {fileID: 0}
+  sfxJump: {fileID: 0}
+  sfxLand: {fileID: 0}
+  sfxLensPickup: {fileID: 0}
+  sfxLensMount: {fileID: 0}
+  sfxLensUnmount: {fileID: 0}
+  sfxVolume: 0.8
+--- !u!4 &509025196
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 509025194}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 16.5429, y: 5.04667, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &519420028
 GameObject:
   m_ObjectHideFlags: 0
@@ -7129,6 +7186,9 @@ MonoBehaviour:
   randomizeMirrors: 1
   mirrorRandomSteps: 2
   terrainPrefab: {fileID: 3036692677029143887, guid: 026db0c5fb8c90e42a19fec5e1b8819b, type: 3}
+  terrainGrassPrefab: {fileID: 0}
+  terrainDirtPrefab: {fileID: 0}
+  terrainIndoorPrefab: {fileID: 0}
   wallPrefab: {fileID: 8729295376759312252, guid: d7babcf66473ea74da5612289f0afbb7, type: 3}
   wallGlassPrefab: {fileID: 8729295376759312252, guid: d7babcf66473ea74da5612289f0afbb7, type: 3}
   platformPrefab: {fileID: 1920868056192726637, guid: a3cc96da8376aa14c8b3b293986c0ac3, type: 3}
@@ -7139,12 +7199,18 @@ MonoBehaviour:
   mirrorPrefab: {fileID: 5533226878766281882, guid: 0b3a431ee09411f4c8509494df52b036, type: 3}
   mirrorFixedPrefab: {fileID: 7218362267031057069, guid: a24c85d4df7db6d4cb030ae275191500, type: 3}
   mirrorMountPrefab: {fileID: 308216092695629906, guid: 72a2964d40ab19249b8d7fc10a8da52a, type: 3}
+  mirrorMountCeilingPrefab: {fileID: 0}
   prismPrefab: {fileID: 8795530849122982693, guid: 795ac93740606ae4caceac1e7d490804, type: 3}
   gatePrefab: {fileID: 8081502512736266935, guid: 8fcde4eb12e4de646b301b39d6da83c5, type: 3}
   gateDoorPrefab: {fileID: 9036771864545153735, guid: ce1719a62e9e9504bae0cb73b8e057db, type: 3}
   decoyPrefab: {fileID: 0}
   spawnPrefab: {fileID: 0}
   playerPrefab: {fileID: 0}
+  stageBackgrounds:
+  - {fileID: 0}
+  - {fileID: 0}
+  - {fileID: 0}
+  - {fileID: 0}
 --- !u!4 &1041966761
 Transform:
   m_ObjectHideFlags: 0
@@ -8920,6 +8986,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::TowardTheStars.Objects.LightSource
   direction: {x: -0.70710677, y: -0.70710677}
   intensity: 1
+  Emitting: 1
 --- !u!1 &1413707799
 GameObject:
   m_ObjectHideFlags: 0
@@ -14468,6 +14535,7 @@ MonoBehaviour:
   closedColor: {r: 0.78, g: 0.35, b: 0.3, a: 1}
   openColor: {r: 0.4, g: 1, b: 0.5, a: 0.12}
   slideDuration: 0.8
+  openSortingOffset: -20
 --- !u!1 &2101365961
 GameObject:
   m_ObjectHideFlags: 0
@@ -15767,3 +15835,4 @@ SceneRoots:
   - {fileID: 2139845358121239371}
   - {fileID: 4921353873134600086}
   - {fileID: 4522478811621506948}
+  - {fileID: 509025196}

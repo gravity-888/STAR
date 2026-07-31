@@ -108,7 +108,8 @@ const TOOLS = [
 // ---------- 상태 ----------
 function blankStage(){ return {
   W:30, H:15, terrain:{},                 // terrain: col->height
-  terrainType:{},                         // "x,y"->("grass"|"dirt"|"indoor"). 미지정 칸=기본 땅(dirt)
+  terrainType:{},                         // "x,y"->("grass"|"dirt"|"indoor"). 미지정 칸=terrainTypeDefault
+  terrainTypeDefault:"dirt",              // 스테이지 전역 기본 지형타입(칸 오버라이드 없을 때)
   wall:new Set(), wallT:new Set(), platT:new Set(), platS:new Set(),
   ladder:new Set(), zone:new Set(), entrance:new Set(),
   mirrors:[], decoys:[],
@@ -117,7 +118,7 @@ function blankStage(){ return {
   bg:null,                                // 배경 아트 인덱스(null=미지정 → 스테이지 순번 자동)
 };}
 const TCOLOR = { grass:"#3a9a48", dirt:"#5a4230", indoor:"#6a6a78" };
-function terrainTypeAt(s,x,y){ return s.terrainType[key(x,y)] || "dirt"; }
+function terrainTypeAt(s,x,y){ return s.terrainType[key(x,y)] || s.terrainTypeDefault || "dirt"; }
 function terrainColor(s,x,y){ return TCOLOR[terrainTypeAt(s,x,y)] || TCOLOR.dirt; }
 const state = {
   stageList: [...DEFAULT_STAGES],                              // 현재 스테이지 키 순서(추가/삭제로 가변)
@@ -336,8 +337,12 @@ function buildProp(){ const p=document.getElementById("prop"), t=state.tool, b=s
     const wrap=document.createElement("div"); wrap.className="arrows";
     for(const [v,lab] of [["grass","잔디"],["dirt","땅"],["indoor","실내"]]){ const bt=document.createElement("button"); bt.textContent=lab; if(b.tType===v) bt.className="on"; bt.onclick=()=>{ b.tType=v; buildProp(); }; wrap.appendChild(bt); }
     p.appendChild(wrap);
+    row(`<label>이 스테이지 기본 타입(안 칠한 칸)</label>`);
+    const wd=document.createElement("div"); wd.className="arrows";
+    for(const [v,lab] of [["grass","잔디"],["dirt","땅"],["indoor","실내"]]){ const bt=document.createElement("button"); bt.textContent=lab; if((S().terrainTypeDefault||"dirt")===v) bt.className="on"; bt.onclick=()=>{ S().terrainTypeDefault=v; draw(); buildProp(); }; wd.appendChild(bt); }
+    p.appendChild(wd);
     p.appendChild(document.createElement("div")).className="small";
-    p.lastChild.textContent="지형이 있는 칸을 클릭해 타입을 칠합니다(잔디=초록·땅=갈색·실내=회색). 우클릭=기본(땅)으로.";
+    p.lastChild.textContent="위=칠할 타입(칸 클릭, 우클릭=기본으로). 아래=이 스테이지 기본 타입(안 칠한 지형 전체).";
   } else if(t==="prism"){
     row(`<label>출력 방향(복수 선택)</label>`); p.appendChild(arrowPicker("multi",b.prismOut,a=>{ if(a==="·")return; b.prismOut.has(a)?b.prismOut.delete(a):b.prismOut.add(a); if(S().prism)S().prism.out=[...b.prismOut]; draw(); buildProp(); }));
     const rf=row(`<label><input type="checkbox" id="pf" ${b.prismFixed?"checked":""}> 고정</label>`); rf.querySelector("#pf").onchange=e=>{ b.prismFixed=e.target.checked; if(S().prism)S().prism.fixed=b.prismFixed; };
@@ -398,7 +403,8 @@ function exportData(){ const out={ unit:{cell_px:40,unity_world_per_cell:1.0}, s
     st.wall_transmit=[...s.wallT].map(unkey);
     st.entrance=[...s.entrance].map(unkey);
     st.terrain=Object.fromEntries(Object.entries(s.terrain).map(([c,h])=>[c,h]));
-    if(Object.keys(s.terrainType).length) st.terrain_type={...s.terrainType};   // 칸별 타입 오버라이드(미지정=기본 땅)
+    if(s.terrainTypeDefault && s.terrainTypeDefault!=="dirt") st.terrain_type_default=s.terrainTypeDefault;   // 스테이지 전역 기본(dirt면 생략)
+    if(Object.keys(s.terrainType).length) st.terrain_type={...s.terrainType};   // 칸별 타입 오버라이드
     st.wall=[...s.wall,...s.wallT].map(unkey);          // 빛통과벽도 벽 목록에 포함(+wall_transmit로 표시)
     if(s.camera && !camDefault(s.camera)) st.camera=s.camera;   // 전부 기본값이면 생략
     out.stages[k]=st;
@@ -418,6 +424,7 @@ function importData(obj){ const st=obj.stages||obj;
   for(const k of list){ const src=st[k]; const s=blankStage(); if(src){
     s.W=src.grid?.W||30; s.H=src.grid?.H||15;
     if(typeof src.background==="number" && src.background>=0) s.bg=src.background;
+    if(src.terrain_type_default) s.terrainTypeDefault=src.terrain_type_default;
     if(src.terrain) for(const [c,h] of Object.entries(src.terrain)) s.terrain[c]=h;
     if(src.terrain_type) for(const [kk,v] of Object.entries(src.terrain_type)) s.terrainType[kk]=v;
     const wt=new Set((src.wall_transmit||[]).map(a=>key(a[0],a[1]))); s.wallT=new Set(wt);

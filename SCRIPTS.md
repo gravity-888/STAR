@@ -24,6 +24,7 @@ Assets/Scripts/
             CameraFollow.cs   플레이어 추적 카메라 + 레벨 경계 클램프
             GateExit.cs       스테이지 이동 트리거(게이트 통과/입장통로 역주행)
             AudioManager.cs   오디오 seam: 정적 SFX/BGM 훅(씬 컴포넌트, 클립 미할당이면 무음)
+            ParallaxBackground.cs 배경 시차 스크롤(카메라 이동의 factor배만 따라감)
   Light/    Beam.cs           Beam 구조체 + IBeamHit 인터페이스
             BeamTracer.cs     빛 추적(스택 기반, 매 프레임) + LineRenderer 렌더
   Objects/  LightSource.cs    광원(랜즈): 빛 발사(Emitting=false면 미발사)
@@ -161,14 +162,14 @@ Assets/Scripts/
 
 ## 8. Objects / `GateDetector.cs`
 
-**역할**: 게이트 수광부. 도달한 광량을 누적해 임계(Σ≥1.0) 이상이면 개방. 빛을 흡수(이어지는 빔 없음).
+**역할**: 게이트 수광부. 도달 광량 Σ≥`threshold`를 **일정 시간(`chargeTime`, 기본 1.2s) 유지**하면 개방(충전식). 빛을 흡수(이어지는 빔 없음). **상태에 따른 색 변경 없음 — 단일 아트**(#8), 진행은 임시 게이지로 표시.
 
-- **`Interact()`**: 입사 세기를 `_acc`에 누적만. 개폐 판정은 `Commit`에서.
-- **`BeginFrame()`**: 매 프레임 재추적 시작 시 누적만 0으로(상태·색·이벤트는 유지).
-- **`Commit()`**: 누적 세기로 개폐 확정. **엣지 트리거** — 상태가 바뀔 때만 색 변경·이벤트 발생. `OnOpen`(열리는 순간 1회), `OnStateChanged(bool)`(양방향, 문 여닫이용).
-- **`CacheClosedColor()`**: 최초 배치 시 닫힘 색을 기억(개방 시 초록으로 바꿨다가 되돌리기 위해).
+- **`Interact()`**: 입사 세기를 `_acc`에 누적만.
+- **`BeginFrame()`**: 재추적 시작 시 누적만 0으로(충전·상태 유지).
+- **`Commit()`**: 이번 프레임 `lit`(Σ≥threshold)이면 `_charge += dt`, 아니면 `-= dt`(0~chargeTime 클램프). `_charge`가 가득 차면 개방, 아래로 떨어지면 닫힘. **엣지 트리거** `OnOpen`(1회)·`OnStateChanged(bool)`.
+- **`ChargeFraction`**(0~1): 충전 비율. **`SetGauge(fillPivot)`**: 게이지 채움 피벗을 등록하면 `Commit`마다 그 x 스케일을 `ChargeFraction`으로 갱신(왼쪽 정렬로 차오름).
 
-**원리 노트**: `BeginFrame`(누적 0) → 매 프레임 `Interact`로 누적 → `Commit`(판정)의 3단계라, 빛 경로가 매 프레임 바뀌어도 깜빡임 없이 안정적으로 개폐된다. 색 변경은 `visual != null`·엣지에서만 → 프리팹 아트에 대표 SpriteRenderer가 없어도 안전.
+**원리 노트**: `BeginFrame`→매 프레임 `Interact`→`Commit`의 3단계는 그대로. 개방 판정만 "순간 Σ≥1"에서 "**Σ≥1을 chargeTime 동안 유지**"로 바뀌었다(빛을 잠깐 스쳐도 안 열림). `Time.deltaTime`을 쓰므로 일시정지(timeScale 0)엔 충전이 멈춘다. 게이지는 임시 시각화 — 나중에 수광부 아트 일부를 투명으로 두고 그 뒤 단색 게이지를 채우는 효과로 교체 예정.
 
 ---
 
@@ -241,7 +242,7 @@ Assets/Scripts/
 - **`EnsureUnsolvedStart(tracer)`**: 게이트가 열려 있으면 거울을 다시 랜덤화하고 재추적, 닫힐 때까지(최대 20회). 로컬 함수 `AnyOpen()`으로 판정.
 
 ### 11.5 비광학 배치
-- **`BuildBackground`**: `stageBackgrounds[인덱스]`를 레벨 중앙에 배치하고 모든 SpriteRenderer를 `Z_BACKGROUND`(−100) 기준으로 맨 뒤로. 인덱스=맵 `background`(≥0) 또는 stageOrder 순번. 슬롯 비거나 범위 밖이면 배경 없음(폴백). Build에서 지형보다 먼저 호출.
+- **`BuildBackground`**: `stageBackgrounds[인덱스]`를 레벨 중앙에 배치하고 모든 SpriteRenderer를 `Z_BACKGROUND`(−100) 기준으로 맨 뒤로. 인덱스=맵 `background`(≥0) 또는 stageOrder 순번. 슬롯 비거나 범위 밖이면 배경 없음(폴백). Build에서 지형보다 먼저 호출. **프리팹에 `ParallaxBackground`가 없으면 루트에 기본 factor(`backgroundParallax`)로 하나 부착**(시차 스크롤).
 - **`BuildTerrain`**: `terrain` 딕셔너리(열→높이)로 0..높이 칸을 솔리드 타일로 채움. **칸마다 `TerrainTypeAt`(terrain_type 오버라이드 → 기본 dirt)로 타입을 정해 `TerrainStyle`이 잔디/땅/실내 프리팹·색 선택**(타입 슬롯 비면 `terrainPrefab`, 그것도 비면 색 사각형). `fitToScale`로 1×1칸에 정확히 맞춤(이웃과 연결). 빛 차단은 벽 담당.
 - **`BuildWalls`**: `AllWalls()` 순회. `entrance` 칸은 벽 생략(구멍). `wall_transmit` 칸은 반투명 + `BeamTransparent`(빛만 통과). 나머지는 불투명 벽(빔 정지).
 - **`BuildPlatforms`**: 발판 셀마다 얇은(0.4) 솔리드. **윗면을 y+0.5로 올려 지형과 높이 일치**(`PLATFORM_CY`). `transmit`면 파랑 + `BeamTransparent`, 아니면 남색(빛 차단). `fitToScale`로 가로 1칸 정합.
@@ -252,7 +253,8 @@ Assets/Scripts/
 - **`BuildLensItem`**: `lens_item`이 있으면 그 칸에 트리거 콜라이더(0.7×0.7) + `LensItem` 마커 + 랜즈 시각 배치(줍기 대상).
 - **`BuildMirrors`**: 거울마다 솔리드 루트 + `"visual"`. 아트 기본각 보정은 프리팹에만. `Mirror.Init(정답각)` 후 `randomizeMirrors`면 랜덤화. 회전 가능한 것만 `_mirrors`에 등록. **거치대**: `SurfaceBelow`/`SurfaceAbove`로 위·아래 중 **가까운 지지면**을 골라 `PlaceOnSurface` — 아래=바닥 거치대(세움), 위=천장 거치대(전용 아트면 정립, 없으면 바닥 아트를 뒤집어 폴백).
 - **`BuildPrism`**: 프리즘 루트 + 시각(45°는 플레이스홀더 마름모용) + `Prism.Init(출력방향들)`.
-- **`BuildGate`**: 수광부 루트 + 시각(→ `GateDetector.visual`, **1칸(40×40)에 `fitToScale`**) + `GateDetector`. 이어 `BuildGateDoor`·`BuildGateExit`.
+- **`BuildGate`**: 수광부 루트 + 시각(**단일 아트, 1칸 `fitToScale`, 색 피드백 없음**) + `GateDetector` + **`BuildGateGauge`(임시 충전 게이지)** 등록. 이어 `BuildGateDoor`·`BuildGateExit`.
+- **`BuildGateGauge`**: 수광부 위에 배경 바 + 채움 바 생성. 채움 피벗을 왼쪽 끝에 두어 x 스케일로 왼쪽 정렬 차오름 → `GateDetector.SetGauge`가 매 프레임 갱신. **`MakeSprite`**(색 사각형 자식 생성) 헬퍼 사용.
 - **`BuildGateExit`**: 개폐존 바운딩 박스로 Trigger 생성. **얇은 축(통로 방향)을 그리드 중심 쪽으로 `gateExitInset`만큼 확장** → 표면에 붙기 전/붙은 채로도 통과 판정. `GateExit.Init(det, this, +1)`.
 - **`BuildEntrance`**: 입장 통로에 역방향 Trigger(`GateExit.Init(null, this, -1)`) → 왼쪽으로 나가면 이전 스테이지.
 - **`BuildGateDoor`**: 개폐존을 **하나의 긴 블럭**(콜라이더 1 + 시각 1)으로. 프리팹은 `InstantiateGateDoor`로 존에 맞춤(가로형 90° 회전). **`gate.open_dir`(기본 ↑)로 열림 벡터 계산**(세로 이동=존 높이·가로 이동=존 폭) → `door.Register(box, sr, 벡터)` + `SetOpenImmediate(false)` + 수광부 `OnStateChanged` 구독.
@@ -374,6 +376,18 @@ Assets/Scripts/
 - **훅 위치**: 거울 회전=`MirrorInteractor`, 게이트 개방=`GateDoor.SetOpen(true)`, 전환=`MapLoader.Transition`, 점프/착지=`PlayerController`(착지는 공중→접지 에지), 랜즈 줍기/장착/해제=`LensInteractor`, BGM 3종=`GameManager`(EnterTitle/StartGameFromTitle/HandleGameComplete).
 
 **원리 노트**: 호출부는 `AudioManager.GateOpen()`처럼 정적으로 부르고 인스턴스 유무는 내부에서 판단(`I == null`이면 무시). 그래서 씬에 오디오를 안 넣어도 게임은 그대로 동작하고, 넣으면 소리만 붙는다.
+
+---
+
+## 20. Level / `ParallaxBackground.cs`
+
+**역할**: 배경 시차(parallax) 스크롤. 카메라 이동량의 **`factor`배만큼만** 배경을 따라 움직여 원근감을 만든다.
+
+- **`factor`**(0~1): 0=월드 고정(안 따라감) · 1=화면 고정(카메라와 완전 동행). **원경일수록 1에 가깝게**.
+- **`LateUpdate`**: 첫 프레임에 자기 시작 위치·카메라 시작 위치를 기억 → 이후 `위치 = 시작 + (카메라이동)×factor`.
+- **다층 시차**: 배경 프리팹의 레이어(자식)마다 이 컴포넌트를 붙여 factor를 달리하면 근경/원경이 다른 속도로 움직인다. 프리팹에 하나도 없으면 `MapLoader.BuildBackground`가 루트에 `backgroundParallax` 기본값으로 하나 붙인다.
+
+**원리 노트**: 시차로 배경이 카메라를 부분 추종하므로, 배경 아트는 **그리드 전체가 아니라 화면+드리프트 여유**만 덮으면 된다(factor가 1에 가까울수록 적게 움직여 더 작은 아트로 충분). `CameraFollow`가 카메라를 움직인 뒤 읽히도록 둘 다 `LateUpdate`(1프레임 지연은 무시할 수준).
 
 ---
 

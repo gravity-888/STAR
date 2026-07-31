@@ -121,6 +121,7 @@ namespace TowardTheStars.Level
 
         [Header("스테이지 배경 (스테이지 수만큼 채움 — 인덱스 = stageOrder 순번, 맵의 background로 개별 지정 가능)")]
         public GameObject[] stageBackgrounds;
+        [Range(0f, 1f)] public float backgroundParallax = 0.5f;   // 시차 강도(0=고정, 1=화면 고정). 프리팹에 ParallaxBackground가 없을 때 기본값
 
         const int Z_TERRAIN = 0, Z_PLATFORM = 1, Z_OBJECT = 5, Z_SPAWN = 8;
         const int Z_BACKGROUND = -100;   // 모든 아트 뒤(지형 0보다 훨씬 아래)
@@ -350,9 +351,13 @@ namespace TowardTheStars.Level
             int w = s.Grid != null ? s.Grid.W : 30, h = s.Grid != null ? s.Grid.H : 15;
             var go = Instantiate(stageBackgrounds[idx], _root, false);
             go.name = "background";
-            go.transform.position = new Vector3((w - 1) * 0.5f, (h - 1) * 0.5f, 0f);   // 그리드 중앙
+            go.transform.position = new Vector3((w - 1) * 0.5f, (h - 1) * 0.5f, 0f);   // 그리드 중앙(시차 기준점)
             foreach (var sr in go.GetComponentsInChildren<SpriteRenderer>(true))
                 sr.sortingOrder = Z_BACKGROUND + sr.sortingOrder;   // 내부 상대순서 유지, 전체는 맨 뒤로
+
+            // 시차 스크롤: 프리팹이 레이어별 ParallaxBackground를 안 가졌으면 루트에 기본 하나 부착.
+            if (go.GetComponentInChildren<ParallaxBackground>() == null)
+                go.AddComponent<ParallaxBackground>().factor = backgroundParallax;
         }
 
         void BuildTerrain(StageData s)
@@ -567,17 +572,52 @@ namespace TowardTheStars.Level
         {
             if (s.Gate?.Pos == null) return;
             var go = SolidRoot("gate", new Vector2(s.Gate.Pos[0], s.Gate.Pos[1]), 0.9f);
-            // 수광부 아트는 1칸(40×40px)에 정확히 맞춘다(fitToScale) — PPU·artScale 무관, 빛 판정 콜라이더(0.9)는 불변.
-            var sr = Visual(go.transform, gatePrefab, C_Gate, Z_OBJECT, Vector2.one, fitToScale: true);
+            // 수광부 아트는 1칸(40×40px)에 fitToScale. 단일 아트 — 상태에 따른 색 변경 없음(#8).
+            Visual(go.transform, gatePrefab, C_Gate, Z_OBJECT, Vector2.one, fitToScale: true);
             var det = go.AddComponent<GateDetector>();
-            det.visual = sr;
-            det.CacheClosedColor();
 
-            // 개폐부(문): gate_open_zone 셀들 — 기본 닫힘(차단), 수광부 Σ≥1.0이면 개방(통과).
+            // 임시 충전 게이지(수광부 위) — 빛을 받는 동안 채워지고 가득 차면 개방. 나중에 수광부 아트 내부 채움 효과로 교체 예정.
+            det.SetGauge(BuildGateGauge(go.transform));
+
+            // 개폐부(문): gate_open_zone 셀들 — 기본 닫힘(차단), 수광부 충전 완료 시 개방(통과).
             BuildGateDoor(s, det);
 
             // 통과 감지: 개방 상태에서 플레이어가 개폐부를 지나가면 다음 스테이지로.
             BuildGateExit(s, det);
+        }
+
+        // 임시 충전 게이지: 수광부 위에 배경 바 + 채움 바. 채움은 왼쪽 정렬로 자라난다(x 스케일 = 충전 비율).
+        //   반환 = 채움 피벗(GateDetector가 x 스케일을 갱신). 나중에 수광부 아트 내부 채움 효과로 교체 예정.
+        Transform BuildGateGauge(Transform parent)
+        {
+            const float W = 1.0f, H = 0.16f, Y = 0.75f;   // 폭·높이·수광부 위 오프셋
+            var root = new GameObject("gauge");
+            root.transform.SetParent(parent, false);
+            root.transform.localPosition = new Vector3(0f, Y, 0f);
+
+            MakeSprite(root.transform, "bg", new Color(0.08f, 0.09f, 0.12f, 0.9f), Z_SPAWN, new Vector2(W, H), Vector3.zero);
+
+            // 채움 피벗을 왼쪽 끝(-W/2)에 두고 자식 채움을 +W/2로 → 피벗 x스케일을 키우면 왼쪽 고정으로 자라남.
+            var pivot = new GameObject("fillPivot");
+            pivot.transform.SetParent(root.transform, false);
+            pivot.transform.localPosition = new Vector3(-W * 0.5f, 0f, 0f);
+            MakeSprite(pivot.transform, "fill", new Color(0.45f, 1f, 0.7f), Z_SPAWN + 1, new Vector2(W, H), new Vector3(W * 0.5f, 0f, 0f));
+            pivot.transform.localScale = new Vector3(0f, 1f, 1f);   // 시작 0(빈 게이지)
+            return pivot.transform;
+        }
+
+        // 색 사각형 스프라이트 자식 생성(지정 로컬위치·크기). 게이지 등 코드 UI용.
+        SpriteRenderer MakeSprite(Transform parent, string name, Color col, int order, Vector2 size, Vector3 localPos)
+        {
+            var go = new GameObject(name);
+            go.transform.SetParent(parent, false);
+            go.transform.localPosition = localPos;
+            go.transform.localScale = new Vector3(size.x, size.y, 1f);
+            var sr = go.AddComponent<SpriteRenderer>();
+            sr.sprite = Square;
+            sr.color = col;
+            sr.sortingOrder = order;
+            return sr;
         }
 
         void BuildGateExit(StageData s, GateDetector det)
