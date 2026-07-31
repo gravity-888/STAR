@@ -166,7 +166,7 @@ Assets/Scripts/
 
 - **`Interact()`**: 입사 세기를 `_acc`에 누적만.
 - **`BeginFrame()`**: 재추적 시작 시 누적만 0으로(충전·상태 유지).
-- **`Commit()`**: 이번 프레임 `lit`(Σ≥threshold)이면 `_charge += dt`, 아니면 `-= dt`(0~chargeTime 클램프). `_charge`가 가득 차면 개방, 아래로 떨어지면 닫힘. **엣지 트리거** `OnOpen`(1회)·`OnStateChanged(bool)`.
+- **`Commit()`**: 이번 프레임 `lit`(Σ≥threshold)이면 `_charge += dt`, 아니면 `-= dt`(0~chargeTime 클램프). `_charge`가 가득 차면 개방. **`latchOnOpen`(기본 true)**: 완전히 열린 순간 **래치** → 이후 빛이 가려져도(플레이어가 빔을 막든 반사가 깨지든) **열린 상태 유지**(충전 감소 없음). 래치 전에는 빛이 끊기면 충전이 줄어 닫힐 수 있음. **엣지 트리거** `OnOpen`(1회)·`OnStateChanged(bool)`. 래치는 스테이지 재빌드(전환·R) 시 새 컴포넌트라 초기화.
 - **`ChargeFraction`**(0~1): 충전 비율. **`SetGauge(fillPivot)`**: 게이지 채움 피벗을 등록하면 `Commit`마다 그 x 스케일을 `ChargeFraction`으로 갱신(왼쪽 정렬로 차오름).
 
 **원리 노트**: `BeginFrame`→매 프레임 `Interact`→`Commit`의 3단계는 그대로. 개방 판정만 "순간 Σ≥1"에서 "**Σ≥1을 chargeTime 동안 유지**"로 바뀌었다(빛을 잠깐 스쳐도 안 열림). `Time.deltaTime`을 쓰므로 일시정지(timeScale 0)엔 충전이 멈춘다. 게이지는 임시 시각화 — 나중에 수광부 아트 일부를 투명으로 두고 그 뒤 단색 게이지를 채우는 효과로 교체 예정.

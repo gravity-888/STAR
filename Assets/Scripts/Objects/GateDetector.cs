@@ -13,8 +13,10 @@ namespace TowardTheStars.Objects
     {
         [SerializeField] float threshold = 1.0f;
         [SerializeField] float chargeTime = 1.2f;   // 빛을 이만큼(초) 유지하면 개방
+        [SerializeField] bool latchOnOpen = true;   // 완전히 열리면 빛이 끊겨도 열린 상태 유지(래치)
         float _acc;
         float _charge;   // 0..chargeTime
+        bool _latched;   // 래치되면 이후 빛과 무관하게 개방 유지
 
         public bool IsOpen { get; private set; }
         public float ChargeFraction => chargeTime > 0.0001f ? Mathf.Clamp01(_charge / chargeTime) : (IsOpen ? 1f : 0f);
@@ -36,6 +38,8 @@ namespace TowardTheStars.Objects
         // 재추적 종료: 이번 프레임 광량으로 충전을 올리거나 내리고, 가득 차면 개방.
         public void Commit()
         {
+            if (_latched) { UpdateGauge(); return; }   // 이미 완전 개방 → 빛과 무관하게 유지(충전 감소 없음)
+
             bool lit = _acc >= threshold - 0.001f;
             float dt = Time.deltaTime;
             _charge = Mathf.Clamp(_charge + (lit ? dt : -dt), 0f, chargeTime);
@@ -44,7 +48,8 @@ namespace TowardTheStars.Objects
             bool open = _charge >= chargeTime - 0.0001f;
             if (open == IsOpen) return;
             IsOpen = open;
-            OnStateChanged?.Invoke(open);   // 개폐부(문) 여닫이 — 양방향
+            if (open && latchOnOpen) _latched = true;   // 완전 개방 순간 래치 → 이후 빛이 가려져도 열린 채 유지
+            OnStateChanged?.Invoke(open);   // 개폐부(문) 여닫이
             if (open) OnOpen?.Invoke();
         }
 
