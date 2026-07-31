@@ -234,7 +234,7 @@ namespace TowardTheStars.Level
 
             // 랜덤 초기화가 우연히 게이트를 열어버리면(우회 경로) 닫힌 배치가 나올 때까지 다시 섞는다.
             //   → 항상 "안 풀린 상태"로 시작. 22.5° 배수 랜덤이라 정답 도달성은 유지.
-            if (randomizeMirrors && _mirrors.Count > 0) EnsureUnsolvedStart(tracer);
+            if (randomizeMirrors && _mirrors.Count > 0 && !_reverseEntry) EnsureUnsolvedStart(tracer);
 
             SetupCamera(stage, player);
 
@@ -545,7 +545,8 @@ namespace TowardTheStars.Level
                 var mirror = go.AddComponent<Mirror>();
                 mirror.Init(m.AngleDeg, m.Fixed, artOffset);   // 기준 = 정답
                 // 퍼즐 초기화: 회전 가능한 거울만 정답에서 랜덤하게 틀어 놓는다(22.5° 배수 → Q/E로 정답 도달 가능).
-                if (randomizeMirrors) mirror.RandomizeFromSolution(mirrorRandomSteps);
+                //   단 역주행(이미 푼 스테이지로 복귀)이면 정답 그대로 둔다.
+                if (randomizeMirrors && !_reverseEntry) mirror.RandomizeFromSolution(mirrorRandomSteps);
                 if (!m.Fixed) _mirrors.Add(mirror);   // 정답 정렬/재랜덤 대상
 
                 // 거치대: 거울과 같은 x에, 위/아래 중 더 가까운 지지면 쪽에 붙인다.
@@ -590,6 +591,8 @@ namespace TowardTheStars.Level
 
             // 개폐부(문): gate_open_zone 셀들 — 기본 닫힘(차단), 수광부 충전 완료 시 개방(통과).
             BuildGateDoor(s, det);
+            // 역주행(이미 푼 스테이지로 복귀): 게이트를 즉시 개방 상태로 프리셋(거울도 정답 유지됨).
+            if (_reverseEntry) det.PresetOpen();
 
             // 통과 감지: 개방 상태에서 플레이어가 개폐부를 지나가면 다음 스테이지로.
             BuildGateExit(s, det);
@@ -720,8 +723,8 @@ namespace TowardTheStars.Level
             float dist = Mathf.Abs(openDir.y) >= Mathf.Abs(openDir.x) ? h : w;
             door.Register(box, sr, (Vector3)(openDir * dist));   // 열릴 때 이 벡터만큼 미끄러진다
 
-            door.SetOpenImmediate(false);        // 기본 닫힘(막힘) — 최초 배치는 연출 없이
-            det.OnStateChanged += door.SetOpen;  // 광량 임계 통과 시 천천히 여닫이
+            door.SetOpenImmediate(_reverseEntry); // 연출 없이 초기 배치. 역주행(이미 푼 스테이지 복귀)이면 이미 열린 채로
+            det.OnStateChanged += door.SetOpen;  // 광량 충전 완료/해제 시 천천히 여닫이
         }
 
         void BuildDecoys(StageData s)

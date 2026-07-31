@@ -29,6 +29,15 @@ namespace TowardTheStars.Objects
 
         public void SetGauge(Transform fillPivot) { _gaugeFill = fillPivot; UpdateGauge(); }
 
+        // 이미 푼 스테이지로 되돌아올 때: 충전 없이 즉시 개방·래치. 문은 MapLoader가 SetOpenImmediate로 맞춘다(이벤트 미발생).
+        public void PresetOpen()
+        {
+            _charge = chargeTime;
+            _latched = true;
+            IsOpen = true;
+            UpdateGauge();
+        }
+
         public void Interact(Beam incoming, Vector2 hitCenter, List<Beam> outgoing)
         {
             _acc += incoming.intensity;   // 흡수: outgoing 없음. 충전·개폐는 Commit에서.

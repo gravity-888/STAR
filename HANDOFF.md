@@ -142,7 +142,7 @@ Assets/Scripts/
 | 정답 정렬 키 | ✅ `P`=회전 가능한 거울을 전부 정답 각도로 스냅(테스트/구제). `MapLoader.autoSolveKey`로 토글 — **데모 빌드 시 끌 것** |
 | 프리즘 분기 | ✅ 구현(0.5+0.5). **Stage3 플레이 검증 완료** — 두 갈래 합산으로만 개방 |
 | 게이트 개방 | ✅ **충전식**: Σ≥1.0을 `chargeTime`(기본 1.2s) 유지하면 **개폐부(문) 열림**. 래치 전엔 빛 끊기면 충전 감소→닫힘, **완전 개방 시 래치**(`latchOnOpen`)되어 이후 빛이 가려져도 **열린 채 유지**(통과 중 플레이어가 빔 막아도 안 닫힘). 수광부는 **단일 아트(색 변경 없음)**, 진행은 **임시 충전 게이지**로 표시 — 나중에 수광부 내부 채움 효과로 교체 예정 |
-| 스테이지 진행 | ✅ **양방향**: 게이트 통과→다음(GoToNext), 입장 통로로 되돌아가면→이전(GoToPrev, exit_spawn=출구쪽 등장). GateExit 트리거(dir±1), stageOrder. 정방향 스폰=입장 통로(벽 우측 1칸), 역방향 스폰=exit_spawn(게이트 좌측 1칸; stage3는 개폐부 우측 땅). stage3 게이트=바닥 해치(문칸 밑 terrain=-1) |
+| 스테이지 진행 | ✅ **양방향**: 게이트 통과→다음(GoToNext), 입장 통로로 되돌아가면→이전(GoToPrev, exit_spawn=출구쪽 등장). GateExit 트리거(dir±1), stageOrder. 정방향 스폰=입장 통로(벽 우측 1칸), 역방향 스폰=exit_spawn. **역주행(이미 푼 스테이지 복귀)이면 거울 정답 유지 + 게이트 즉시 개방**(`_reverseEntry`: 랜덤·EnsureUnsolvedStart 스킵, `GateDetector.PresetOpen`, 문 SetOpenImmediate(true)). 정방향 재진입은 다시 랜덤(새 도전). **스폰이 트리거에 겹치면 무장 해제**로 전환 오실레이션 방지 |
 | 광원 화면 밖 | ✅ stage1~3 광원을 광선축(↙) 따라 우상단으로 밀어 화면 밖(x>gridW-0.5). 퍼즐 불변. 벽 그레이즈는 wall_transmit로 예외(stage1 [25,12]; stage3는 우측벽을 x=44로 밀어 그레이즈 소멸→예외 불필요). stage4는 제외 |
 | 전환 중 조작잠금 | ✅ 전환 연출(페이드+빌드+페이드) 동안 `PlayerController.ControlsLocked`=true → 이동/점프/등반·거울조작(Q/E) 정지 + 플레이어 완전 정지(속도·중력 0). MapLoader.Transition이 토글 |
 | 사다리 | ✅ Stage4 배치(5줄기) + **등반 로직 구현(Phase 5)** |

@@ -253,7 +253,7 @@ Assets/Scripts/
 - **`BuildLensItem`**: `lens_item`이 있으면 그 칸에 트리거 콜라이더(0.7×0.7) + `LensItem` 마커 + 랜즈 시각 배치(줍기 대상).
 - **`BuildMirrors`**: 거울마다 솔리드 루트 + `"visual"`. 아트 기본각 보정은 프리팹에만. `Mirror.Init(정답각)` 후 `randomizeMirrors`면 랜덤화. 회전 가능한 것만 `_mirrors`에 등록. **거치대**: `SurfaceBelow`/`SurfaceAbove`로 위·아래 중 **가까운 지지면**을 골라 `PlaceOnSurface` — 아래=바닥 거치대(세움), 위=천장 거치대(전용 아트면 정립, 없으면 바닥 아트를 뒤집어 폴백).
 - **`BuildPrism`**: 프리즘 루트 + 시각(45°는 플레이스홀더 마름모용) + `Prism.Init(출력방향들)`.
-- **`BuildGate`**: 수광부 루트 + 시각(**단일 아트, 1칸 `fitToScale`, 색 피드백 없음**) + `GateDetector` + **`BuildGateGauge`(임시 충전 게이지)** 등록. 이어 `BuildGateDoor`·`BuildGateExit`.
+- **`BuildGate`**: 수광부 루트 + 시각(**단일 아트, 1칸 `fitToScale`, 색 피드백 없음**) + `GateDetector` + **`BuildGateGauge`(임시 충전 게이지)** 등록. 이어 `BuildGateDoor`·`BuildGateExit`. **역주행(`_reverseEntry`)이면 `det.PresetOpen()`**(즉시 개방·래치) + 문도 열린 채 배치.
 - **`BuildGateGauge`**: 수광부 위에 배경 바 + 채움 바 생성. 채움 피벗을 왼쪽 끝에 두어 x 스케일로 왼쪽 정렬 차오름 → `GateDetector.SetGauge`가 매 프레임 갱신. **`MakeSprite`**(색 사각형 자식 생성) 헬퍼 사용.
 - **`BuildGateExit`**: 개폐존 바운딩 박스로 Trigger 생성. **얇은 축(통로 방향)을 그리드 중심 쪽으로 `gateExitInset`만큼 확장** → 표면에 붙기 전/붙은 채로도 통과 판정. `GateExit.Init(det, this, +1)`.
 - **`BuildEntrance`**: 입장 통로에 역방향 Trigger(`GateExit.Init(null, this, -1)`) → 왼쪽으로 나가면 이전 스테이지.
