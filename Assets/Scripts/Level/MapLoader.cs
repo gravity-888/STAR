@@ -222,7 +222,15 @@ namespace TowardTheStars.Level
             // 빛 추적기 생성 후 추적
             var tracer = new GameObject("BeamTracer").AddComponent<BeamTracer>();
             tracer.transform.SetParent(_root, false);
-            tracer.Trace();
+            tracer.Trace();   // 콜라이더 위치 동기화 포함
+
+            // 스폰 겹침 방지: 플레이어가 전환 트리거 위에 스폰됐으면 그 트리거를 무장 해제(나갈 때까지 통과 금지) → 전환 오실레이션 차단.
+            if (player != null)
+            {
+                var playerCol = player.GetComponent<Collider2D>();
+                foreach (var ge in _root.GetComponentsInChildren<GateExit>(true))
+                    ge.DisarmIfOverlaps(playerCol);
+            }
 
             // 랜덤 초기화가 우연히 게이트를 열어버리면(우회 경로) 닫힌 배치가 나올 때까지 다시 섞는다.
             //   → 항상 "안 풀린 상태"로 시작. 22.5° 배수 랜덤이라 정답 도달성은 유지.
@@ -275,9 +283,10 @@ namespace TowardTheStars.Level
         void EnsureUnsolvedStart(BeamTracer tracer)
         {
             var gates = Object.FindObjectsByType<GateDetector>(FindObjectsSortMode.None);
+            // 충전식 게이트는 빌드 시점엔 아직 안 열림(IsOpen=false)이라, "정답 배치"는 즉시 광량(IsLit)으로 판정.
             bool AnyOpen()
             {
-                foreach (var g in gates) if (g != null && g.IsOpen) return true;
+                foreach (var g in gates) if (g != null && g.IsLit) return true;
                 return false;
             }
             for (int attempt = 0; attempt < 20 && AnyOpen(); attempt++)

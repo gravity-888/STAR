@@ -239,7 +239,7 @@ Assets/Scripts/
 
 ### 11.4 거울 퍼즐 보조
 - **`SolveAllMirrors()`**: `_mirrors`(회전 가능 거울)를 전부 `SnapToSolution()`. 빛은 다음 프레임 자동 재추적.
-- **`EnsureUnsolvedStart(tracer)`**: 게이트가 열려 있으면 거울을 다시 랜덤화하고 재추적, 닫힐 때까지(최대 20회). 로컬 함수 `AnyOpen()`으로 판정.
+- **`EnsureUnsolvedStart(tracer)`**: 시작 배치가 정답이면 거울을 다시 랜덤화(최대 20회). 충전식 게이트는 빌드 시점에 아직 안 열리므로(`IsOpen=false`) **즉시 광량 `GateDetector.IsLit`으로 "정답 배치"를 판정**한다.
 
 ### 11.5 비광학 배치
 - **`BuildBackground`**: `stageBackgrounds[인덱스]`를 레벨 중앙에 배치하고 모든 SpriteRenderer를 `Z_BACKGROUND`(−100) 기준으로 맨 뒤로. 인덱스=맵 `background`(≥0) 또는 stageOrder 순번. 슬롯 비거나 범위 밖이면 배경 없음(폴백). Build에서 지형보다 먼저 호출. **프리팹에 `ParallaxBackground`가 없으면 루트에 기본 factor(`backgroundParallax`)로 하나 부착**(시차 스크롤).
@@ -325,6 +325,7 @@ Assets/Scripts/
 
 - **`Init(gate, loader, dir)`**: 게이트(null이면 무조건)·로더·방향 주입.
 - **`OnTriggerEnter2D` / `OnTriggerStay2D` → `TryPass`**: 게이트가 있으면 개방 상태에서만, 플레이어면 `GoToNext`/`GoToPrev`. **Stay도 판정**하는 이유: 문에 붙어 있는 동안 게이트가 열려도(재진입 없이) 통과되게. 중복 호출은 `_transitioning` 가드가 막는다.
+- **`_armed` + `DisarmIfOverlaps`**: 새 스테이지에서 플레이어가 트리거 **위에 스폰**되면 즉시 되돌아가는 **전환 오실레이션**이 생긴다 → MapLoader가 빌드 직후 겹친 트리거를 무장 해제(`_armed=false`)하고, 플레이어가 한 번 **밖으로 나가면(OnTriggerExit) 재무장**. 정상 진입(스폰이 트리거 밖)은 처음부터 무장 상태라 영향 없음.
 
 ---
 

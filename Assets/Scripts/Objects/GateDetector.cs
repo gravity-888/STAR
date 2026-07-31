@@ -19,6 +19,8 @@ namespace TowardTheStars.Objects
         bool _latched;   // 래치되면 이후 빛과 무관하게 개방 유지
 
         public bool IsOpen { get; private set; }
+        // 이번 프레임 광량이 임계 이상인지(충전 시간과 무관한 즉시 판정). EnsureUnsolvedStart가 "정답 배치인지"를 이걸로 본다.
+        public bool IsLit => _acc >= threshold - 0.001f;
         public float ChargeFraction => chargeTime > 0.0001f ? Mathf.Clamp01(_charge / chargeTime) : (IsOpen ? 1f : 0f);
         public event Action OnOpen;                 // 열리는 엣지에서 1회(스테이지 진행 등)
         public event Action<bool> OnStateChanged;   // 개폐 상태가 바뀔 때마다(문 여닫이용)
