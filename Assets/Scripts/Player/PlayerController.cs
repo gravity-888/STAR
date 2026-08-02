@@ -14,15 +14,16 @@ namespace TowardTheStars.Player
     public class PlayerController : MonoBehaviour
     {
         [Header("이동 (유닛/초)")]
-        public float moveSpeed = 6f;
-        public float climbSpeed = 5f;
+        public float moveSpeed = 7f;    // 확정(2026-08-03): 6→7. 좌우 달리기 초당 7칸.
+        public float climbSpeed = 6f;    // 확정(2026-08-03): 5→6. 사다리 상승·하강 초당 6칸.
 
         [Header("점프 (가변 높이)")]
-        public float jumpHeightCells = 3.5f;   // 끝까지 누른 최대 정점 높이(칸). 맵파일 jump_units=3.5 기준.
+        public float jumpHeightCells = 3.8f;   // 확정(2026-08-03): 3.5→3.8. 끝까지 누른 최대 정점(칸).
+        // 3.8로 올린 이유: 기존 3.5칸 목표 지점이 이제 0.3칸 여유를 가져 "끝까지 안 눌러도" 도달 가능(도달 가능 지점 자체는 사실상 불변).
         [Range(0.05f, 1f)]
         public float jumpCutMultiplier = 0.45f;  // 상승 중 버튼 떼면 상승속도 ×이 값 → 낮은 점프.
         public float fallGravityMultiplier = 1.8f;  // 하강 중(v.y<0) 중력 ×이 값 → 낙하 속도↑. 상승·최대높이엔 영향 없음.
-        // 최대 속도는 중력에서 역산(정점=3.5칸). 짧게 누르면 상승 감쇠로 정점≈0.45²·3.5≈0.7칸.
+        // 최대 속도는 중력에서 역산(정점=3.8칸). 짧게 누르면 상승 감쇠로 정점≈0.45²·3.8≈0.77칸.
 
         [Header("접지 판정")]
         public float groundCheckDist = 0.08f;   // 발밑으로 이만큼 캐스트해 바닥 감지
@@ -32,6 +33,12 @@ namespace TowardTheStars.Player
         public float boundsMargin = 4f;   // 레벨 경계에서 이만큼 벗어나면 스폰으로 자동 복귀(낙사·이탈 구제)
 
         public static bool ControlsLocked;   // 스테이지 전환 연출 중 입력/이동 정지(MapLoader가 제어)
+        public float InputX { get; private set; }   // 현재 좌우 입력 의도(-1/0/+1). 미는 거울 등 외부가 참조.
+
+        // 미는 거울 밀기 세션: 거울이 매 물리프레임 SetPushDrive를 호출해 플레이어를 pushSpeed로 구동
+        //   (점프·방향전환·등반 금지 → 거울과 한 몸처럼 이동). 짧은 만료로 거울이 멈추면 자동 해제.
+        int _pushDir; float _pushSpeed; float _pushUntil = -1f;
+        public void SetPushDrive(int dir, float speed) { _pushDir = dir; _pushSpeed = speed; _pushUntil = Time.time + 0.08f; }
 
         Rigidbody2D _rb;
         BoxCollider2D _col;
@@ -88,6 +95,7 @@ namespace TowardTheStars.Player
         {
             if (ControlsLocked)   // 전환 연출 중 완전 정지(입력·중력 무효)
             {
+                InputX = 0f;
                 _rb.linearVelocity = Vector2.zero;
                 _rb.gravityScale = 0f;
                 return;
@@ -109,10 +117,15 @@ namespace TowardTheStars.Player
                 if (kb.wKey.isPressed || kb.upArrowKey.isPressed)    iy += 1f;
                 if (kb.sKey.isPressed || kb.downArrowKey.isPressed)  iy -= 1f;
             }
+            InputX = ix;   // 현재 좌우 입력 의도 노출(미는 거울이 참조) — 실제 키 기준(구동값 아님)
+
+            // 미는 거울 밀기 세션 중이면: pushSpeed로만 이동, 점프·방향전환·등반 금지(거울과 함께 움직이는 것처럼).
+            bool pushDriven = Time.time <= _pushUntil;
+            if (pushDriven) { _climbing = false; _jumpQueued = false; }
 
             bool onLadder = _ladderCount > 0;
             if (!onLadder) _climbing = false;
-            else if (Mathf.Abs(iy) > 0.01f) _climbing = true;   // 사다리 위에서 상/하 입력 → 등반 시작
+            else if (!pushDriven && Mathf.Abs(iy) > 0.01f) _climbing = true;   // 사다리 위 상/하 입력 → 등반(밀기 중 제외)
 
             if (_climbing)
             {
@@ -127,9 +140,9 @@ namespace TowardTheStars.Player
                 }
             }
 
-            // 일반 지상/공중 이동
+            // 일반 지상/공중 이동 (밀기 세션 중이면 방향 고정·pushSpeed로 구동)
             var v = _rb.linearVelocity;
-            v.x = ix * moveSpeed;
+            v.x = pushDriven ? _pushDir * _pushSpeed : ix * moveSpeed;
 
             // 코요테 타임: 접지 중이면 유예 리필, 공중이면 감소. >0인 동안은 점프 허용.
             bool grounded = IsGrounded();

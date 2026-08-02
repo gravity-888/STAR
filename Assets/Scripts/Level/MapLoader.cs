@@ -46,11 +46,13 @@ namespace TowardTheStars.Level
         public bool autoSolveKey = true;     // P: 회전 가능한 거울을 전부 정답 각도로 정렬. 데모 빌드 시 끌 것
 
         readonly List<Mirror> _mirrors = new();   // 이번 스테이지의 회전 가능 거울(정답 정렬·재랜덤 대상)
+        readonly List<(string id, PushableMirror pm)> _pushMirrors = new();   // 이번 스테이지의 미는 거울(위치 저장/복원 대상)
 
         // 스테이지별 진행상태(다른 맵 갔다 돌아와도 이어지게). 새 게임 시작 시 초기화.
         class StageProgress
         {
             public readonly Dictionary<string, float> mirrors = new();   // 거울 id → 현재 각도
+            public readonly Dictionary<string, float> pushMirrors = new();   // 미는 거울 id → 현재 칸 x
             public bool gateOpen;      // 게이트를 열어 놨는지(래치)
             public bool hasLens;       // 이 스테이지가 랜즈 장착 메커닉을 쓰는지
             public bool lensMounted;   // 랜즈를 횃불에 장착했는지
@@ -87,6 +89,7 @@ namespace TowardTheStars.Level
         static readonly Color C_Gate     = new(0.30f, 0.90f, 0.45f);
         static readonly Color C_Mirror   = new(0.55f, 0.90f, 1.00f);
         static readonly Color C_MirrorFix = new(0.60f, 0.60f, 0.65f);
+        static readonly Color C_MirrorPush = new(0.55f, 0.85f, 0.70f);   // 미는 거울(민트) — 회전(하늘)·고정(회색)과 구분
         static readonly Color C_Prism    = new(0.95f, 0.45f, 0.95f);
         static readonly Color C_Ladder   = new(0.80f, 0.60f, 0.30f);
         static readonly Color C_Decoy    = new(0.95f, 0.35f, 0.35f, 0.6f);
@@ -123,6 +126,8 @@ namespace TowardTheStars.Level
         public GameObject torchPrefab;           // 랜즈를 장착하는 횃불(고정 배경, 회전 안 함)
         public GameObject mirrorPrefab;          // 회전 가능 거울(돌아가는 반사면)
         public GameObject mirrorFixedPrefab;     // 고정(회색) 거울 — 별도 아트 가능
+        public GameObject mirrorPushPrefab;      // 미는 거울(좌우로 미는 반사면) — 별도 아트 가능
+        public GameObject mirrorPushMountPrefab; // 미는 거울 전용 받침대 — 배치 규칙은 바닥 거치대와 동일(거울과 함께 미끄러짐)
         public GameObject mirrorMountPrefab;     // 바닥 거치대 — 거울과 같은 x, 밑면이 바닥에 닿게 세움(회전 안 함)
         public GameObject mirrorMountCeilingPrefab;  // 천장 거치대(전용 아트 10×80) — 천장에 매다는 거울용. 비면 바닥 거치대를 뒤집어 폴백
         public GameObject prismPrefab;
@@ -215,6 +220,7 @@ namespace TowardTheStars.Level
 
             Clear();
             _mirrors.Clear();
+            _pushMirrors.Clear();
             _root = new GameObject($"Level_{stageKey}").transform;
             _root.SetParent(transform, false);
 
@@ -270,6 +276,8 @@ namespace TowardTheStars.Level
             var p = new StageProgress();
             foreach (var m in _mirrors)
                 if (m != null && !string.IsNullOrEmpty(m.Id)) p.mirrors[m.Id] = m.AngleDeg;
+            foreach (var (id, pm) in _pushMirrors)
+                if (pm != null && !string.IsNullOrEmpty(id)) p.pushMirrors[id] = pm.CellX;
             var det = _root.GetComponentInChildren<GateDetector>(true);
             if (det != null) p.gateOpen = det.IsOpen;
             var mount = _root.GetComponentInChildren<TorchMount>(true);
@@ -572,40 +580,65 @@ namespace TowardTheStars.Level
             foreach (var m in s.Mirrors)
             {
                 if (m.Pos == null) continue;
+                bool angleFixed = m.Fixed || m.Pushable;   // 미는 거울도 각도 고정(회전·랜덤·정답정렬 제외)
                 var go = SolidRoot($"mirror_{m.Id}", new Vector2(m.Pos[0], m.Pos[1]), 0.9f);
-                var col = m.Fixed ? C_MirrorFix : C_Mirror;
-                var mp = m.Fixed ? mirrorFixedPrefab : mirrorPrefab;
+                var col = m.Pushable ? C_MirrorPush : (m.Fixed ? C_MirrorFix : C_Mirror);
+                var mp = m.Pushable ? mirrorPushPrefab : (m.Fixed ? mirrorFixedPrefab : mirrorPrefab);
 
                 // 아트 기본각 보정은 프리팹에만 적용(색 사각형 막대는 보정 없이 -angle 그대로). 초기 회전은 Mirror가 곧 덮어씀.
+                // 플레이스홀더 막대 = 0.18(두께)×1.1(길이) → 긴 축이 반사면(t)에 눕는다(반사가 긴 면에서 일어나 보임).
                 float artOffset = mp != null ? mirrorArtAngleOffset : 0f;
-                Visual(go.transform, mp, col, Z_OBJECT, new Vector2(1.1f, 0.18f), -m.AngleDeg,
+                Visual(go.transform, mp, col, Z_OBJECT, new Vector2(0.18f, 1.1f), -m.AngleDeg,
                        prefabRotZ: -m.AngleDeg + artOffset);
 
                 var mirror = go.AddComponent<Mirror>();
                 mirror.Id = m.Id;
-                mirror.Init(m.AngleDeg, m.Fixed, artOffset);   // 기준 = 정답
-                // 복원 우선: 저장된 진행상태가 있으면 그 각도로 되돌린다(다른 맵 갔다 와도 이어짐).
-                //   없으면 — 정방향은 랜덤하게 흐트러뜨리고(새 도전), 역주행은 정답 그대로 둔다.
-                if (_restore != null && !string.IsNullOrEmpty(m.Id) && _restore.mirrors.TryGetValue(m.Id, out float savedAngle))
-                    mirror.SetAngle(savedAngle);
-                else if (randomizeMirrors && !_reverseEntry)
-                    mirror.RandomizeFromSolution(mirrorRandomSteps);
-                if (!m.Fixed) _mirrors.Add(mirror);   // 정답 정렬/재랜덤 대상
+                mirror.Init(m.AngleDeg, angleFixed, artOffset);   // 기준 = 정답
 
-                // 거치대: 거울과 같은 x에, 위/아래 중 더 가까운 지지면 쪽에 붙인다.
+                if (m.Pushable)
+                {
+                    // 미는 거울: Dynamic RB(중력 적용 → 바닥에 놓임/떨어짐). PushableMirror가 밀 때만 X를 풀고,
+                    //   정지 시 X를 고정(FreezePositionX)해 떨림·몸빵밀기를 막는다. 각도는 맵 고정(회전/랜덤/정답정렬 제외).
+                    //   받침대는 아래 공통 블록에서 배치(거울과 함께 미끄러짐).
+                    var rb = go.AddComponent<Rigidbody2D>();
+                    rb.bodyType = RigidbodyType2D.Dynamic;
+                    rb.gravityScale = 3f;
+                    rb.freezeRotation = true;
+                    rb.interpolation = RigidbodyInterpolation2D.Interpolate;
+                    rb.collisionDetectionMode = CollisionDetectionMode2D.Continuous;
+                    var pm = go.AddComponent<PushableMirror>();
+                    pm.Init(0f, s.Grid.W - 1f);   // 실제 벽은 콜라이더 캐스트가 막음(이 범위는 안전망)
+                    if (_restore != null && !string.IsNullOrEmpty(m.Id) && _restore.pushMirrors.TryGetValue(m.Id, out float savedX))
+                        pm.SetCellX(savedX);      // 다른 맵 갔다 와도 밀어 둔 위치 복원
+                    if (!string.IsNullOrEmpty(m.Id)) _pushMirrors.Add((m.Id, pm));
+                }
+                else
+                {
+                    // 복원 우선: 저장된 진행상태가 있으면 그 각도로 되돌린다(다른 맵 갔다 와도 이어짐).
+                    //   없으면 — 정방향은 랜덤하게 흐트러뜨리고(새 도전), 역주행은 정답 그대로 둔다.
+                    if (_restore != null && !string.IsNullOrEmpty(m.Id) && _restore.mirrors.TryGetValue(m.Id, out float savedAngle))
+                        mirror.SetAngle(savedAngle);
+                    else if (randomizeMirrors && !_reverseEntry)
+                        mirror.RandomizeFromSolution(mirrorRandomSteps);
+                    if (!angleFixed) _mirrors.Add(mirror);   // 정답 정렬/재랜덤 대상
+                }
+
+                // 거치대: 거울과 같은 x에, 위/아래 중 더 가까운 지지면 쪽에 붙인다(미는 거울도 규칙 동일 — 아트만 별도 슬롯).
                 //   아래(지형/발판)가 가까우면 밑면을 바닥에 세우고, 위(발판=천장)가 가까우면 뒤집어 천장에 매단다.
                 //   → stage4 천장 거울(발판 mirror_relation=above인 M1·M7)은 자동으로 천장 부착. 거울 id 하드코딩 없음.
                 //   거울 루트는 회전하지 않고 "visual"만 회전(Mirror.ApplyVisualRotation)하므로 거치대는 안 돌아간다.
+                //   미는 거울은 받침대가 루트의 자식이라 거울과 함께 좌우로 미끄러진다.
+                var floorMount = m.Pushable ? mirrorPushMountPrefab : mirrorMountPrefab;
                 float mY = m.Pos[1];
                 float below = SurfaceBelow(s, m.Pos[0], mY);
                 float above = SurfaceAbove(s, m.Pos[0], mY);
                 bool ceiling = !float.IsNaN(above) && (float.IsNaN(below) || (above - mY) <= (mY - below));
                 if (ceiling)
                     // 천장 거울: 전용 천장 거치대 아트(있으면 정립), 없으면 바닥 거치대를 뒤집어 폴백.
-                    PlaceOnSurface(go.transform, mirrorMountCeilingPrefab != null ? mirrorMountCeilingPrefab : mirrorMountPrefab,
+                    PlaceOnSurface(go.transform, mirrorMountCeilingPrefab != null ? mirrorMountCeilingPrefab : floorMount,
                                    "mount", Z_OBJECT - 1, mY, above, ceiling: true, flip: mirrorMountCeilingPrefab == null);
                 else
-                    PlaceOnSurface(go.transform, mirrorMountPrefab, "mount", Z_OBJECT - 1, mY, below);
+                    PlaceOnSurface(go.transform, floorMount, "mount", Z_OBJECT - 1, mY, below);
             }
         }
 
@@ -1073,17 +1106,15 @@ namespace TowardTheStars.Level
                     min.y -= s.Camera.BottomPad; max.y += s.Camera.TopPad;
                 }
 
-                // 줌 결정: fit_width면 가로 폭에 맞춤(좌우 벽=화면 끝), 아니면 세로 viewCells 칸.
-                float orthoSize = viewCells * 0.5f;
-                if (s.Camera != null && s.Camera.FitWidth)
-                    orthoSize = (max.x - min.x) * 0.5f / Mathf.Max(cam.aspect, 0.01f);
-                cam.orthographicSize = Mathf.Min(orthoSize, (max.y - min.y) * 0.5f);   // 세로 경계 초과 방지
+                // 줌 결정은 CameraFollow에 위임(fit_width면 가로 폭=화면 끝, 아니면 세로 viewCells 칸).
+                // CameraFollow가 aspect 변화(창 리사이즈·해상도)마다 orthographicSize를 재계산 → 프레이밍 해상도 독립.
+                bool fitWidth = s.Camera != null && s.Camera.FitWidth;
                 var cp = cam.transform.position;
                 cam.transform.position = new Vector3(cp.x, cp.y, -10f);   // 2D 직교 표준 z 보장
                 var follow = cam.GetComponent<CameraFollow>();
                 if (follow == null) follow = cam.gameObject.AddComponent<CameraFollow>();
                 follow.enabled = true;
-                follow.Configure(player, min, max);
+                follow.Configure(player, min, max, fitWidth, viewCells);
             }
             else
             {

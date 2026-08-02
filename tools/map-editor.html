@@ -126,7 +126,7 @@ const state = {
   cur:"stage1", tool:"terrain",
   view:{ox:60, oy:-40, cell:26},          // oy는 아래(원점) 여백 — draw에서 y-flip
   aspect:16/9,                            // 게임 화면 가로/세로 비율(카메라 계산용, 저장 안 됨)
-  brush:{ angle:45, dir:"↙", fixed:false, transmit:true, prismOut:new Set(["→","↗"]), prismFixed:false, tType:"grass", hasLens:true, gateDir:"↑" },
+  brush:{ angle:45, dir:"↙", fixed:false, pushable:false, transmit:true, prismOut:new Set(["→","↗"]), prismFixed:false, tType:"grass", hasLens:true, gateDir:"↑" },
   sel:null,                                // 선택된 거울 인덱스
 };
 const S = ()=>state.stages[state.cur];
@@ -202,7 +202,7 @@ function drawPlat(k,color){ const [gx,gy]=unkey(k); const [x,y]=toScreen(gx,gy);
 function marker(o,color,glyph){ const [x,y]=toScreen(o.x,o.y); const c=state.view.cell; ctx.fillStyle=color; ctx.beginPath(); ctx.arc(x+c/2,y+c/2,c*0.34,0,7); ctx.fill(); ctx.fillStyle="#0b0d13"; ctx.font=`bold ${c*0.42}px sans-serif`; ctx.textAlign="center"; ctx.textBaseline="middle"; ctx.fillText(glyph,x+c/2,y+c/2+1); }
 function arrowGlyph(o,dir,color){ const v=ARROW_VEC[dir]; if(!v) return; const [x,y]=toScreen(o.x,o.y); const c=state.view.cell; const cx=x+c/2, cy=y+c/2; ctx.strokeStyle=color; ctx.lineWidth=2; ctx.beginPath(); ctx.moveTo(cx,cy); ctx.lineTo(cx+v[0]*c*0.55, cy-v[1]*c*0.55); ctx.stroke(); }
 function drawMirror(m,i){ const [x,y]=toScreen(m.x,m.y); const c=state.view.cell; const cx=x+c/2, cy=y+c/2; ctx.save(); ctx.translate(cx,cy); ctx.rotate(m.angle*Math.PI/180); // 게임 rotation_z=-angle(y-up) = 캔버스 +angle(y-down) → 동일 방향
-  ctx.fillStyle=m.fixed?"#9a9aa5":"#8ce6ff"; ctx.fillRect(-c*0.55,-c*0.09,c*1.1,c*0.18); ctx.restore();
+  ctx.fillStyle=m.pushable?"#8ce6b3":(m.fixed?"#9a9aa5":"#8ce6ff"); ctx.fillRect(-c*0.09,-c*0.55,c*0.18,c*1.1); ctx.restore();  // 막대 긴 축=반사면(게임 플레이스홀더와 동일)
   if(state.sel===i){ ctx.strokeStyle="#fff"; ctx.lineWidth=2; ctx.strokeRect(x+2,y+2,c-4,c-4); }
   ctx.fillStyle="#0009"; ctx.font=`${c*0.3}px sans-serif`; ctx.textAlign="center"; ctx.textBaseline="middle"; ctx.fillText(m.angle+"°",cx,cy);
 }
@@ -251,8 +251,8 @@ function eraseAll(gx,gy){ const s=S(), k=key(gx,gy);
 }
 function applyMirror(gx,gy,erase){ const s=S(); const idx=s.mirrors.findIndex(m=>m.x===gx&&m.y===gy);
   if(erase){ if(idx>=0){ s.mirrors.splice(idx,1); state.sel=null; buildProp(); } return; }
-  if(idx>=0){ state.sel=idx; const m=s.mirrors[idx]; state.brush.angle=m.angle; state.brush.fixed=m.fixed; buildProp(); }
-  else { s.mirrors.push({x:gx,y:gy,angle:state.brush.angle,fixed:state.brush.fixed}); state.sel=s.mirrors.length-1; buildProp(); }
+  if(idx>=0){ state.sel=idx; const m=s.mirrors[idx]; state.brush.angle=m.angle; state.brush.fixed=m.fixed; state.brush.pushable=!!m.pushable; buildProp(); }
+  else { s.mirrors.push({x:gx,y:gy,angle:state.brush.angle,fixed:state.brush.fixed,pushable:state.brush.pushable}); state.sel=s.mirrors.length-1; buildProp(); }
 }
 
 // ---------- 입력 ----------
@@ -316,6 +316,8 @@ function buildProp(){ const p=document.getElementById("prop"), t=state.tool, b=s
     r.querySelector("#ap").onclick=()=>setAngle(b.angle+22.5);
     const rf=row(`<label><input type="checkbox" id="fx" ${b.fixed?"checked":""}> 고정(회전 불가)</label>`);
     rf.querySelector("#fx").onchange=e=>{ b.fixed=e.target.checked; if(sel){sel.fixed=b.fixed; draw();} };
+    const rp=row(`<label><input type="checkbox" id="pu" ${b.pushable?"checked":""}> 미는 거울(좌우로 밀기·각도 고정)</label>`);
+    rp.querySelector("#pu").onchange=e=>{ b.pushable=e.target.checked; if(sel){sel.pushable=b.pushable; draw();} };
     p.appendChild(document.createElement("div")).className="small";
     p.lastChild.textContent="거울을 클릭하면 선택돼 각도를 수정합니다. 우클릭=삭제.";
   } else if(t==="source"){
@@ -393,7 +395,7 @@ function exportData(){ const out={ unit:{cell_px:40,unity_world_per_cell:1.0}, s
     if(s.lensItem) st.lens_item=[s.lensItem.x,s.lensItem.y];
     st.prism = s.prism ? {pos:[s.prism.x,s.prism.y],out:s.prism.out,fixed:s.prism.fixed} : null;
     if(s.gate){ st.gate={pos:[s.gate.x,s.gate.y]}; if(s.gate.openDir && s.gate.openDir!=="↑") st.gate.open_dir=s.gate.openDir; }
-    st.mirrors=s.mirrors.map((m,i)=>({id:"M"+(i+1),pos:[m.x,m.y],angle_deg:m.angle,fixed:m.fixed}));
+    st.mirrors=s.mirrors.map((m,i)=>({id:"M"+(i+1),pos:[m.x,m.y],angle_deg:m.angle,fixed:m.fixed,pushable:!!m.pushable}));
     const plats=[]; if(s.platT.size)plats.push({id:"P_pass",cells:[...s.platT].map(unkey),transmit:true}); if(s.platS.size)plats.push({id:"P_block",cells:[...s.platS].map(unkey),transmit:false}); st.platforms=plats;
     st.ladders=groupLadders(s.ladder);
     st.decoys=s.decoys.map((d,i)=>({id:"D"+(i+1),pos:[d.x,d.y]}));
@@ -441,7 +443,7 @@ function importData(obj){ const st=obj.stages||obj;
     if(src.prism?.pos) s.prism={x:src.prism.pos[0],y:src.prism.pos[1],out:src.prism.out||[],fixed:!!src.prism.fixed};
     if(src.spawn) s.spawn={x:src.spawn[0],y:src.spawn[1]};
     if(src.exit_spawn) s.exitSpawn={x:src.exit_spawn[0],y:src.exit_spawn[1]};
-    for(const m of (src.mirrors||[])) if(m.pos) s.mirrors.push({x:m.pos[0],y:m.pos[1],angle:m.angle_deg||0,fixed:!!m.fixed});
+    for(const m of (src.mirrors||[])) if(m.pos) s.mirrors.push({x:m.pos[0],y:m.pos[1],angle:m.angle_deg||0,fixed:!!m.fixed,pushable:!!m.pushable});
     for(const d of (src.decoys||[])) if(d.pos) s.decoys.push({x:d.pos[0],y:d.pos[1]});
     if(src.camera) s.camera=src.camera;
   } state.stages[k]=s; }

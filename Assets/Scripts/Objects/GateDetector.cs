@@ -38,9 +38,10 @@ namespace TowardTheStars.Objects
             UpdateGauge();
         }
 
-        public void Interact(Beam incoming, Vector2 hitCenter, List<Beam> outgoing)
+        public Vector2 Interact(Beam incoming, List<Beam> outgoing)
         {
             _acc += incoming.intensity;   // 흡수: outgoing 없음. 충전·개폐는 Commit에서.
+            return transform.position;    // 빔은 수광부 중심에서 끝남
         }
 
         // 재추적 시작: 누적만 0으로(충전/상태는 유지).

@@ -24,7 +24,9 @@ namespace TowardTheStars.Light
     //  - 수광부: 흡수(추가 없음) + 광량 누적
     public interface IBeamHit
     {
-        // incoming: 입사광, hitCenter: 오브젝트 중심(격자 정합 스냅용), outgoing: 이어질 광선 추가 목록
-        void Interact(Beam incoming, Vector2 hitCenter, List<Beam> outgoing);
+        // incoming: 입사광, outgoing: 이어질 광선 추가 목록.
+        // 반환: 실제 상호작용 지점(입사 세그먼트의 끝점 = 이어질 광선의 시작점). 각 오브젝트가 자기 기하로 계산한다
+        //   (거울=입사광과 반사면 선분의 교점 → 맞는 위치에 따라 반사점이 달라짐, 프리즘·수광부=중심).
+        Vector2 Interact(Beam incoming, List<Beam> outgoing);
     }
 }

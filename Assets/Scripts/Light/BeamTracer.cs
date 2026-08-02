@@ -18,7 +18,7 @@ namespace TowardTheStars.Light
 
         // 재사용 버퍼(매 프레임 재추적 시 GC 억제) + 정적 소스/게이트 캐시.
         readonly List<(Vector2 a, Vector2 b)> _segments = new();
-        readonly Stack<(Beam beam, int depth)> _stack = new();
+        readonly Stack<(Beam beam, int depth, Collider2D skip)> _stack = new();
         readonly List<Beam> _outgoing = new();
         LightSource[] _sources;
         GateDetector[] _gates;
@@ -41,25 +41,27 @@ namespace TowardTheStars.Light
             var outgoing = _outgoing;
 
             _sources ??= Object.FindObjectsByType<LightSource>(FindObjectsSortMode.None);
-            foreach (var src in _sources) if (src != null && src.Emitting) stack.Push((src.Emit(), 0));
+            foreach (var src in _sources) if (src != null && src.Emitting) stack.Push((src.Emit(), 0, null));
 
             while (stack.Count > 0)
             {
-                var (beam, depth) = stack.Pop();
+                var (beam, depth, skipCol) = stack.Pop();
                 if (depth > maxDepth) continue;
 
-                // 투과 콜라이더(발판)는 건너뛰며 첫 유효 히트(광학 오브젝트/벽)까지 스캔.
+                // 투과 콜라이더(발판) + 방금 반사한 거울(skipCol)은 건너뛰며 첫 유효 히트(광학 오브젝트/벽)까지 스캔.
+                //   skipCol: 반사점이 콜라이더 밖(표면 접점이 박스 밖)일 때 반사 직후 자기 거울을 다시 때려 빔이 뭉치는 것을 방지.
                 RaycastHit2D hit = default;
                 Vector2 scanFrom = beam.origin;
                 float remaining = maxLength;
-                for (int skip = 0; skip < 32; skip++)
+                for (int i = 0; i < 32; i++)
                 {
                     hit = Physics2D.Raycast(scanFrom, beam.dir, remaining);
                     if (hit.collider == null) break;
-                    if (hit.collider.GetComponent<IBeamHit>() == null &&
-                        hit.collider.GetComponent<BeamTransparent>() != null)
+                    bool passThrough = hit.collider == skipCol ||
+                        (hit.collider.GetComponent<IBeamHit>() == null && hit.collider.GetComponent<BeamTransparent>() != null);
+                    if (passThrough)
                     {
-                        // 발판: 빛 통과 → 표면 조금 너머로 스캔 지점 전진(같은 발판 재검출 방지)
+                        // 통과/스킵: 표면 조금 너머로 스캔 지점 전진(같은 콜라이더 재검출 방지)
                         float step = hit.distance + 0.02f;
                         remaining -= step;
                         scanFrom = hit.point + beam.dir * 0.02f;
@@ -78,13 +80,12 @@ namespace TowardTheStars.Light
                 var interactable = hit.collider.GetComponent<IBeamHit>();
                 if (interactable != null)
                 {
-                    // 격자 정합을 위해 오브젝트 중심으로 스냅
-                    Vector2 center = hit.collider.transform.position;
-                    segments.Add((beam.origin, center));
-
+                    // 각 오브젝트가 자기 기하로 실제 상호작용 지점을 계산해 반환(거울=반사면 접점, 프리즘·수광부=중심).
                     outgoing.Clear();
-                    interactable.Interact(beam, center, outgoing);
-                    foreach (var o in outgoing) stack.Push((o, depth + 1));
+                    Vector2 p = interactable.Interact(beam, outgoing);
+                    segments.Add((beam.origin, p));
+                    // 이어질 빔은 방금 맞은 콜라이더를 다음 세그먼트 동안 건너뛴다(표면 접점이 박스 밖일 때 자기충돌 방지).
+                    foreach (var o in outgoing) stack.Push((o, depth + 1, hit.collider));
                 }
                 else
                 {

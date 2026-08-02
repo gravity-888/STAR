@@ -1,7 +1,7 @@
 # 별을 향해 (Toward the Stars) — 개발 인수인계
 
 > 다른 컴퓨터에서 이어서 개발하기 위한 정리본. **이 파일부터 읽으면 됩니다.**
-> 최종 갱신: 2026-08-01 (로드맵 3 — 아트·오디오 seam 코드 완료, 에셋 채우기 대기 / 게이트·전환·진행저장 다수 개선)
+> 최종 갱신: 2026-08-03 (로드맵 5 메트릭 확정 7/6/3.8 · 4 카메라 하드닝(빌드검증 대기) · 미는 거울 신규 / 로드맵 3 아트·오디오 에셋은 사용자가 채우는 중)
 >
 > ### 👉 다음에 뭘 해야 하는지는 **[§8 데모 완성 로드맵](#8-데모-완성-로드맵-확정--2026-07-20)** 을 볼 것.
 > 순서가 확정돼 있고 그렇게 정한 이유도 함께 적혀 있습니다. 임의로 순서를 바꾸지 마세요.
@@ -35,6 +35,14 @@
 - **전환 오실레이션 수정**: 스폰이 전환 트리거에 겹치면 무장 해제(나갈 때까지 통과 금지) → 스테이지 이동 렉/멈춤 해결(`GateExit._armed`).
 - **진행상태 저장/복원**: 다른 맵 갔다 와도 거울 각도·게이트 개방·랜즈 장착이 이어짐(`_progress`/`CaptureProgress`, **메모리 저장·세션 한정**). `R`=현 스테이지 진행 폐기·새 랜덤, 새 게임=전체 초기화.
 - **에디터 지형 기본타입**(`terrain_type_default`) 라운드트립 + 선택기 추가.
+
+**후속 추가(2026-08-03)** — 로드맵 4·5 착수 + 미는 거울 신규:
+- **로드맵 5 플레이어 메트릭 확정**: `moveSpeed 6→7`·`climbSpeed 5→6`·`jumpHeightCells 3.5→3.8`(짧게 눌러도 기존 3.5칸 목표 도달, 도달성 불변). 코드 확정([`PlayerController`](Assets/Scripts/Player/PlayerController.cs)). 파생: 최대 수평 점프 ≈6.2칸(기존 5.1)·점프 체공 0.89s. **도달성은 안전**(2026-07-20 통합 플레이테스트가 더 낮은 값으로 전 스테이지 클리어 검증 → 더 쉬워짐). 6번 밸런싱 때 "쉬워진 점프로 의도 안 된 지름길이 없는지"만 확인.
+- **로드맵 4 카메라 하드닝(빌드 검증 대기)**: `fit_width` 줌을 [`CameraFollow`](Assets/Scripts/Level/CameraFollow.cs)가 **화면비 변화(창 리사이즈·해상도)마다 재계산**하도록 변경(이전엔 로드 시 1회 고정 → 창 리사이즈 시 좌우 벽 어긋남). 계산상 stage4는 모든 가로형 화면비에서 좌우 벽이 화면 끝에 붙음. **⚠️ 실기 빌드 프레이밍 검증은 미완**(사용자 수동 — Windows 빌드로 여러 해상도 + 창 리사이즈 확인).
+- **미는 거울 신규 메커니즘**([`PushableMirror`](Assets/Scripts/Objects/PushableMirror.cs)): 플레이어가 **좌우로 밀어 옮기는 거울**(회전 불가·각도 맵 고정). **Dynamic RB(중력 적용 — 바닥에 놓이고 지지면 없으면 떨어짐)**, 정지 시 **X축 고정(FreezePositionX)**으로 떨림·몸빵밀기 방지. 위치는 진행상태 저장(다른 맵 갔다 와도 유지). 반사는 기존 `Mirror`. 맵 `mirror.pushable:true`·프리팹 `mirrorPushPrefab`+전용 받침대 `mirrorPushMountPrefab`(배치 규칙은 바닥 거치대와 동일, 거울과 함께 미끄러짐)·에디터 토글 지원.
+  - **밀기 세션(가감속)**: 밀기 시작 시 0→`pushSpeed`(기본 2.5칸/초)로 **서서히 가속**, 놓으면 관성 방향 다음 칸까지 **arrive식 감속**으로 부드럽게 안착(가속도 `accel` 기본 12칸/초²). 거울이 실제로 움직이는 동안만 [`PlayerController.SetPushDrive`](Assets/Scripts/Player/PlayerController.cs)로 플레이어를 **같은 실시간 속도**로 구동 → **점프·방향전환·등반 불가**(함께 가감속). **놓거나 벽에 막히면 즉시 자유**(스냅 후 멈춤 기능은 삭제). 도착 판정은 "이번 프레임 이동거리 이내"라 진동·무한루프 없음. `pushSpeed`·`accel`은 인스펙터에서 조정.
+- **반사 모델 업그레이드 — 표면 접점 반사(2026-08-03)**: `IBeamHit.Interact`가 이제 **실제 상호작용 지점을 반환**([Beam.cs](Assets/Scripts/Light/Beam.cs)). 거울은 **입사광과 반사면(선분, 반길이 `surfaceHalfLength` 0.55칸)의 교점**에서 반사 → **거울의 어느 부분에 맞느냐에 따라 반사 위치가 달라짐**([Mirror.cs](Assets/Scripts/Objects/Mirror.cs)). 반사 *방향*은 각도(법선)로 그대로. 이전의 "중심 스냅/격자 스냅" 제거 → 미는 거울이 미끄러질 때 반사점이 **거울 면을 따라 매끄럽게** 이동, 정지 시 고정. 프리즘·수광부는 중심 반환(기존 동작). **자기충돌 방지**: 반사점이 콜라이더 밖일 때 반사 빔이 자기 거울을 다시 때리지 않도록 BeamTracer가 그 콜라이더를 한 세그먼트 건너뜀. **플레이스홀더 막대**는 0.18×1.1(긴 축=반사면)로 바꿔 반사가 긴 면에서 일어나 보이게(에디터도 동일).
+  - **회귀 검증 완료(시뮬레이터)**: 반사 규약을 재현한 시뮬레이터(`scratchpad/beamsim`, C# 콘솔)로 정답 배치를 추적 → **Stage 1~4 전부 게이트 Σ=1.00, 모든 거울에서 빛이 정확히 중심(maxOff=0.00)**. 즉 맵이 완벽히 중심-대-중심 설계라 표면 접점=중심 → **기존 퍼즐 불변**(재조정 불필요). OLD 모델도 같은 시뮬레이터에서 전부 도달을 재현해 시뮬레이터 정확성 자가검증됨.
 
 **▶ 다음 순서**: (a) 사용자가 아트 제작·슬롯 채우기 + **오디오 클립 채우기**(씬에 `AudioManager` 추가)로 **3번 마무리**(seam은 코드·구축 완료) → (b) 로드맵 **4(실기 빌드) → 5(플레이어 메트릭) → 6(밸런싱) → 7(최종 아트/오디오 교체)**. 맵 에디터는 필요 시 P4(undo/개별선택 이동)·P6(빛 경로 미리보기) 확장 가능.
 > ⚠️ 씬에 새로 추가할 것: 오디오 쓰려면 **빈 GameObject + `AudioManager`**(클립 배정). 프리팹 슬롯(지형3·거치대2·배경 배열 등)도 아트 나오면 MapLoader 인스펙터에 배정 후 **씬 저장·커밋**.
@@ -122,6 +130,7 @@ Assets/Scripts/
   - `terrain_type`: `{ "x,y": "grass|dirt|indoor" }` 칸별 지형 타입 오버라이드. `terrain_type_default`(없으면 `"dirt"`). 미지정 칸=기본. (지형 위치 자체는 여전히 `terrain` = col→높이)
   - `source.has_lens`: 시작 시 랜즈 장착 여부(기본 `true`). `false`면 시작 시 빔 없음.
   - `lens_item: [x,y]`: 바닥에 떨어진 시작 랜즈 위치(획득 대상). 있으면 그 스테이지에서 F키 장착/해제 활성.
+  - `mirror.pushable`(거울별, 기본 `false`): `true`면 **미는 거울** — 플레이어가 좌우로 밀어 위치를 옮긴다(회전 불가·각도 맵 고정). 미는 동안 부드럽게, 멈추면 칸에 스냅. 회전/랜덤/정답정렬(P) 대상 아님. 위치는 진행상태에 저장돼 다른 맵 갔다 와도 이어짐. 색 폴백 민트, 프리팹 슬롯 `mirrorPushPrefab`. 에디터 거울 속성 "미는 거울" 체크로 배치.
   - `gate.open_dir`(화살표 `↑↓←→`, 기본 `↑`): 게이트 문이 열릴 때 미끄러지는 방향. 이동거리는 개폐존 크기에서 자동(세로=높이·가로=폭). 문은 열릴 때 정렬순서가 내려가 **다른 아트 뒤로 가려짐**(`GateDoor.openSortingOffset`, 기본 −20).
   - `background`(스테이지별, 정수): 배경 아트 인덱스 → `MapLoader.stageBackgrounds[인덱스]`. 없으면 **stageOrder 상 그 스테이지의 순번**을 사용(스테이지가 늘면 배경 배열도 그만큼 늘려 채움). 슬롯이 비거나 범위 밖이면 배경 없음.
   - `stage_order`(최상위, `stages`와 동렬): 진행 순서·개수 배열(예: `["stage1","stage2","stage3"]`). 있으면 **MapLoader.stageOrder를 덮어씀** → 스테이지 개수를 맵이 결정(엔딩·전환·디버그키 자동 연동, 인스펙터 수정 불필요). 없으면 인스펙터 값 폴백. `ApplyStageOrderFromMap()`이 부팅 시(StartGame 전)와 Build에서 반영.
@@ -207,8 +216,8 @@ Assets/Scripts/
 | 1 ✅ | **엔딩 + 최소 UI** | ~~stage4 클리어 시 순환 대신 엔딩 처리·타이틀·일시정지~~ **완료(2026-07-22)**: [`GameManager`](Assets/Scripts/Level/GameManager.cs)가 타이틀→플레이→엔딩→타이틀 관리. [`MapLoader.GoToNext`](Assets/Scripts/Level/MapLoader.cs)는 마지막 스테이지에서 `OnGameComplete`(엔딩) 호출. 스테이지 HUD·진행저장은 사용자 결정으로 제외 |
 | 2 ✅ | **프리팹 seam 구축** | **완료(2026-07-22, 이후 확장)**: [`MapLoader`](Assets/Scripts/Level/MapLoader.cs)에 오브젝트별 프리팹 슬롯 16종(지형·벽·투과벽·발판×2·사다리·랜즈·횃불·거울·고정거울·프리즘·게이트·문·디코이·스폰·플레이어). 프리팹은 각 오브젝트의 `"visual"` 자식만 대체(콜라이더·로직은 루트 유지). **비면 색 사각형으로 폴백** — 3·7번은 슬롯만 채우면 코드 변경 0. seam 계약은 아래 §10 참고 |
 | 3 🔄 | **임시 아트 + 임시 오디오** | **진행 중**: 규격서 [`Assets/Art/PREFAB_SPEC.md`](Assets/Art/PREFAB_SPEC.md) + 폴더 골격(`Assets/Art/Sprites`·`Prefabs`) 준비 완료. **아트 제작은 사용자 직접**(2026-07-22 결정) — 규격대로 프리팹 만들어 슬롯에 드래그하면 코드 변경 0. **오디오는 이 단계에서 제외**(코드 seam 없음 → 별도 단계로 미룸). 최종 아트의 크기·애니 스펙은 그대로 두고 그림 퀄만 낮춘 버전 |
-| 4 | **실기 빌드 1회 확인** | 스탠드얼론 빌드로 stage4 프레이밍 검증 |
-| 5 | **플레이어 메트릭 확정** | `moveSpeed 6`/`climbSpeed 5`/점프 파라미터를 임시값에서 확정값으로 |
+| 4 🔄 | **실기 빌드 1회 확인** | **코드 준비 완료(2026-08-03)**: `fit_width` 줌을 화면비 변화마다 재계산하도록 하드닝([`CameraFollow`](Assets/Scripts/Level/CameraFollow.cs)). **실기 빌드 프레이밍 검증은 사용자 수동으로 미완**(여러 해상도 + 창 리사이즈) |
+| 5 ✅ | **플레이어 메트릭 확정** | **완료(2026-08-03)**: `moveSpeed 7`·`climbSpeed 6`·`jumpHeightCells 3.8` 코드 확정([`PlayerController`](Assets/Scripts/Player/PlayerController.cs)). 도달성 안전(더 쉬워짐) — 지름길 여부만 6번에서 점검 |
 | 6 | **밸런싱** | 거울 경로·맵 길이·구간 추가. 맵 검증기 있으면 유리 |
 | 7 | **최종 아트/오디오 교체** | 프리팹 내용만 교체 — **코드 변경 0이어야 정상** |
 
@@ -254,7 +263,7 @@ Assets/Scripts/
 - **게이트/문 색 피드백**: 게이트 수광부·개폐부는 열림/닫힘 시 `visual`의 **첫 SpriteRenderer 색을 코드가 바꾼다**(초록/반투명). 색으로 상태를 보이려면 루트에 대표 SpriteRenderer를 두거나, 그 방식이 싫으면 애니메이터/자식 스크립트로 대체(그 경우 색 틴트는 무시됨 — null-safe).
 - **랜즈 방향 점**: `lensPrefab`을 넣으면 플레이스홀더 방향 표시 점은 자동 생략(프리팹이 방향을 표현한다고 가정).
 
-**슬롯 목록(21종)**: `terrainPrefab`(공통 폴백) · `terrainGrassPrefab`(잔디) · `terrainDirtPrefab`(땅) · `terrainIndoorPrefab`(실내) · `wallPrefab` · `wallGlassPrefab`(빛 통과 벽) · `platformPrefab`(투과 발판) · `platformSolidPrefab`(차단 발판) · `ladderPrefab` · `lensPrefab`(랜즈 — 광원 시각 + 아이템/소지 시각 겸용) · `torchPrefab`(랜즈 거치 횃불) · `mirrorPrefab`(회전 반사면) · `mirrorFixedPrefab`(고정 거울) · `mirrorMountPrefab`(바닥 거치대) · `mirrorMountCeilingPrefab`(천장 거치대 10×80) · `prismPrefab` · `gatePrefab`(수광부, 1칸 fitToScale) · `gateDoorPrefab`(문) · `decoyPrefab` · `spawnPrefab` · `playerPrefab`. (랜즈 아이템·소지 시각은 별도 슬롯 없이 `lensPrefab` 재사용) + **`stageBackgrounds`(배경 프리팹 배열 — 스테이지 수만큼 채움, 맨 뒤 정렬 `Z_BACKGROUND=-100`)**.
+**슬롯 목록(23종)**: `terrainPrefab`(공통 폴백) · `terrainGrassPrefab`(잔디) · `terrainDirtPrefab`(땅) · `terrainIndoorPrefab`(실내) · `wallPrefab` · `wallGlassPrefab`(빛 통과 벽) · `platformPrefab`(투과 발판) · `platformSolidPrefab`(차단 발판) · `ladderPrefab` · `lensPrefab`(랜즈 — 광원 시각 + 아이템/소지 시각 겸용) · `torchPrefab`(랜즈 거치 횃불) · `mirrorPrefab`(회전 반사면) · `mirrorFixedPrefab`(고정 거울) · `mirrorPushPrefab`(미는 거울 — 좌우 슬라이드) · `mirrorPushMountPrefab`(미는 거울 전용 받침대 — 거울과 함께 미끄러짐) · `mirrorMountPrefab`(바닥 거치대) · `mirrorMountCeilingPrefab`(천장 거치대 10×80) · `prismPrefab` · `gatePrefab`(수광부, 1칸 fitToScale) · `gateDoorPrefab`(문) · `decoyPrefab` · `spawnPrefab` · `playerPrefab`. (랜즈 아이템·소지 시각은 별도 슬롯 없이 `lensPrefab` 재사용) + **`stageBackgrounds`(배경 프리팹 배열 — 스테이지 수만큼 채움, 맨 뒤 정렬 `Z_BACKGROUND=-100`)**.
 
 **구조 메모**: 랜즈=`lensPrefab`+`torchPrefab`(랜즈는 위치 중심, 횃불은 바닥에 세움·회전X). 거울=`mirrorPrefab` 하나(코드가 회전; 아트 기본각 보정 `mirrorArtAngleOffset`=90, 시작각 ±45° 랜덤). **게이트 문**은 개폐존 전체를 덮는 **긴 블럭 1개**(열리면 위로 슬라이드). 수광부(`gatePrefab`)는 문과 **별개 위치의 오브젝트**.
 

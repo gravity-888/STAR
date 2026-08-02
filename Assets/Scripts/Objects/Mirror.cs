@@ -13,6 +13,8 @@ namespace TowardTheStars.Objects
         [SerializeField] bool isFixed;
         // 아트 기본각 보정: 프리팹 아트가 0°가 아닌 방향으로 그려졌을 때 그 차이를 메운다(반사 연산에는 영향 없음).
         [SerializeField] float visualAngleOffset;
+        // 반사면 반길이(칸). 입사광이 이 선분 범위에서 반사한다. 색 막대 길이 1.1칸에 맞춤(거울 이동 시 접점이 이 범위를 따라 움직임).
+        [SerializeField] float surfaceHalfLength = 0.55f;
 
         public float AngleDeg => angleDeg;
         public bool IsFixed => isFixed;
@@ -51,9 +53,28 @@ namespace TowardTheStars.Objects
             ApplyVisualRotation();
         }
 
-        public void Interact(Beam incoming, Vector2 hitCenter, List<Beam> outgoing)
+        public Vector2 Interact(Beam incoming, List<Beam> outgoing)
         {
-            outgoing.Add(new Beam(hitCenter, Reflect(incoming.dir), incoming.intensity));
+            // 입사광이 반사면(선분)과 만나는 실제 지점에서 반사한다. 거울을 이동하면 접점이 반사면을 따라 움직이며
+            //   반사되는 빛의 위치가 연속적으로(끊김 없이) 달라진다. 정지 상태에선 접점이 고정 → 빔 안정.
+            //   반사 "방향"은 거울 각도(법선)로 결정되므로 위치와 무관(평면거울). 위치만 접점을 따른다.
+            float th = angleDeg * Mathf.Deg2Rad;
+            Vector2 t = new(Mathf.Sin(th), Mathf.Cos(th));   // 반사면 방향(법선 n=(cosθ,−sinθ)에 수직)
+            Vector2 p = SurfaceHitPoint(incoming.origin, incoming.dir, transform.position, t);
+            outgoing.Add(new Beam(p, Reflect(incoming.dir), incoming.intensity));
+            return p;
+        }
+
+        // 광선(O,D)이 반사면 선분(중심 C, 방향 t, 반길이 surfaceHalfLength)과 만나는 점.
+        //   선분 밖이면 끝으로 클램프(빔은 콜라이더에 맞았으니 가장 가까운 표면점으로), 평행이면 중심.
+        Vector2 SurfaceHitPoint(Vector2 o, Vector2 d, Vector2 c, Vector2 t)
+        {
+            Vector2 rhs = c - o;
+            float det = t.x * d.y - d.x * t.y;
+            if (Mathf.Abs(det) < 1e-6f) return c;                       // 평행 → 중심
+            float u = (d.x * rhs.y - d.y * rhs.x) / det;                // 반사면 축 위 접점 좌표
+            u = Mathf.Clamp(u, -surfaceHalfLength, surfaceHalfLength);
+            return c + t * u;
         }
 
         // Phase 4: 플레이어가 22.5°씩 회전. 회전 후 BeamTracer 재추적 필요.

@@ -121,6 +121,7 @@ namespace TowardTheStars.Data
         [JsonProperty("angle_deg")] public float AngleDeg;
         [JsonProperty("rotation_z")] public float RotationZ;
         [JsonProperty("fixed")] public bool Fixed;
+        [JsonProperty("pushable")] public bool Pushable;   // true=플레이어가 좌우로 미는 거울(회전 불가·각도 고정)
     }
 
     public class PlatformData
