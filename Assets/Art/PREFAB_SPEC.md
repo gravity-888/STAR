@@ -112,6 +112,23 @@
 - **랜즈 방향**: `lensPrefab`을 넣으면 플레이스홀더 방향 표시 점은 자동 생략된다. **단 코드는 랜즈를 빔 방향으로 회전시키지 않으므로**(현재), 방향 비의존 **대칭 아트**를 권장. 방향성 아트가 꼭 필요하면 랜즈에 회전을 주입하는 소규모 코드 변경이 필요(요청 시 추가).
 - **스폰 표식**: 최종 빌드에선 대개 불필요 → `spawnPrefab`은 비워두면 표식이 사라진다(색 사각형도 안 나옴은 아님 — 비우면 흰 사각형 폴백이 남으니, 표식을 없애려면 투명 1px 스프라이트 프리팹을 넣거나 별도 처리).
 
+## 플레이어 애니메이션 (코드 seam)
+
+플레이어 아트도 프리팹 seam과 동일 — `playerPrefab` 슬롯에 **`Animator`가 든 프리팹**을 넣으면 코드가 상태를 구동한다. 슬롯이 비면(색 사각형) 애니 없이 방향 뒤집기만. [`PlayerAnimator`](../Scripts/Player/PlayerAnimator.cs)가 [`PlayerController`](../Scripts/Player/PlayerController.cs) 상태를 매 프레임 읽어 아래 **Animator 파라미터**로 전달한다(같은 이름으로 만들 것):
+
+| 파라미터 | 타입 | 의미 |
+|---|---|---|
+| `Speed` | Float | 수평 속도 크기(칸/초) — idle↔run 블렌드/전환 |
+| `VSpeed` | Float | 수직 속도(+상승/−하강) — jump/fall 구분 |
+| `Grounded` | Bool | 접지 여부 |
+| `Climbing` | Bool | 사다리 등반 중 |
+| `Pushing` | Bool | 미는 거울 밀기 중 |
+
+- **바라보는 방향**은 코드가 처리(Facing<0이면 `visual`의 x를 뒤집음) → **아트는 오른쪽 바라보는 기준 한 방향만** 그리면 된다.
+- 파라미터 이름이 없거나 Animator가 없어도 **에러 없음**(null-safe) — 필요한 것만 만들어도 됨.
+- **점프/낙하 트리거는 따로 없음** — `Grounded`+`VSpeed`로 상태를 구성(예: `!Grounded && VSpeed>0`=상승, `<0`=하강). 트리거 방식이 필요하면 요청 시 추가.
+- 프리팹은 여전히 **시각 전용**(SpriteRenderer+Animator만, 콜라이더·로직 금지). 크기 ≈ 0.6×0.9.
+
 ## Unity에서 만들고 배정하는 순서
 
 1. 스프라이트 PNG를 `Assets/Art/Sprites/` 에 넣고, 각 텍스처를 선택 → Inspector에서 **Sprite (2D and UI)**, **Pixels Per Unit = 40**, **Pivot = Center**, (픽셀아트면) **Filter Mode = Point / Compression = None**.

@@ -845,6 +845,7 @@ namespace TowardTheStars.Level
             go.AddComponent<LensInteractor>().carryVisualPrefab = lensPrefab;   // F: 랜즈 줍기/장착/해제
 
             Visual(go.transform, playerPrefab, C_Player, Z_SPAWN + 1, new Vector2(0.6f, 0.9f));
+            go.AddComponent<Player.PlayerAnimator>();   // 애니 seam: 프리팹 Animator 구동 + 방향 뒤집기(visual 생성 후 부착)
             return go.transform;
         }
 

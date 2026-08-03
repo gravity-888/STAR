@@ -40,6 +40,13 @@ namespace TowardTheStars.Player
         int _pushDir; float _pushSpeed; float _pushUntil = -1f;
         public void SetPushDrive(int dir, float speed) { _pushDir = dir; _pushSpeed = speed; _pushUntil = Time.time + 0.08f; }
 
+        // 애니메이션 seam: PlayerAnimator가 읽어 프리팹 Animator로 전달(아트 없으면 무시). 코드는 아트에 의존하지 않는다.
+        public bool Grounded { get; private set; }         // 접지 여부
+        public bool Climbing => _climbing;                  // 사다리 등반 중
+        public bool IsPushing { get; private set; }         // 미는 거울 밀기 세션 중
+        public int Facing { get; private set; } = 1;        // 바라보는 방향(-1 왼쪽 / +1 오른쪽)
+        public Vector2 Velocity => _rb != null ? _rb.linearVelocity : Vector2.zero;
+
         Rigidbody2D _rb;
         BoxCollider2D _col;
         ContactFilter2D _groundFilter;   // 트리거(=사다리) 제외한 솔리드만
@@ -118,10 +125,12 @@ namespace TowardTheStars.Player
                 if (kb.sKey.isPressed || kb.downArrowKey.isPressed)  iy -= 1f;
             }
             InputX = ix;   // 현재 좌우 입력 의도 노출(미는 거울이 참조) — 실제 키 기준(구동값 아님)
+            if (Mathf.Abs(ix) > 0.5f) Facing = ix > 0f ? 1 : -1;   // 바라보는 방향(입력 있을 때만 갱신)
 
             // 미는 거울 밀기 세션 중이면: pushSpeed로만 이동, 점프·방향전환·등반 금지(거울과 함께 움직이는 것처럼).
             bool pushDriven = Time.time <= _pushUntil;
             if (pushDriven) { _climbing = false; _jumpQueued = false; }
+            IsPushing = pushDriven;
 
             bool onLadder = _ladderCount > 0;
             if (!onLadder) _climbing = false;
@@ -146,6 +155,7 @@ namespace TowardTheStars.Player
 
             // 코요테 타임: 접지 중이면 유예 리필, 공중이면 감소. >0인 동안은 점프 허용.
             bool grounded = IsGrounded();
+            Grounded = grounded;
             if (grounded) _coyoteTimer = coyoteTime;
             else _coyoteTimer -= Time.fixedDeltaTime;
             if (grounded && !_wasGrounded) AudioManager.Land();   // 공중→접지 에지 = 착지

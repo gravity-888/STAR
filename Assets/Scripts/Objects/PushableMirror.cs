@@ -33,6 +33,8 @@ namespace TowardTheStars.Objects
         float _vx;             // 현재 X 속도(가감속 상태)
         bool _snapping;        // 놓은 뒤 안착 진행 중
         float _snapTargetX;    // 안착 목표 칸(놓는 순간 1회 결정 → 목표 튐/떨림 방지)
+        float _prevX;          // 직전 프레임 위치(실제 이동 여부 판정)
+        float _stuckTimer;     // 밀고 있는데 안 움직인 시간 — 넘으면 플레이어 구동 해제(끼임/소프트락 탈출)
 
         void Awake()
         {
@@ -41,6 +43,7 @@ namespace TowardTheStars.Objects
             _solidFilter = new ContactFilter2D { useTriggers = false };   // 사다리(Trigger)는 장애물 아님
             _solidFilter.SetLayerMask(Physics2D.AllLayers);
             _solidFilter.useLayerMask = true;
+            _prevX = _rb.position.x;
             Freeze(true);   // 시작은 칸에 정지(X 고정)
         }
 
@@ -68,19 +71,24 @@ namespace TowardTheStars.Objects
             EnsurePlayer();
             if (_pc == null) return;
             float dt = Time.fixedDeltaTime;
+            bool moved = Mathf.Abs(_rb.position.x - _prevX) > 1e-4f;   // 직전 스텝에 실제로 움직였는지
+            _prevX = _rb.position.x;
 
             int dir = PushDir();
             if (dir != 0)
             {
                 // 능동 밀기: 0→pushSpeed로 서서히 가속. 앞이 막혔으면 X 고정해 못 민다.
                 _snapping = false;
-                if (Blocked(dir)) { _vx = 0f; Freeze(true); return; }   // 막힘 → 거울 정지, 플레이어는 구동 안 함(자유)
+                if (Blocked(dir)) { _vx = 0f; _stuckTimer = 0f; Freeze(true); return; }   // 막힘 → 거울 정지, 플레이어 자유
                 Freeze(false);
                 _vx = Mathf.MoveTowards(_vx, dir * pushSpeed, accel * dt);
                 SetVX(_vx);
-                _pc.SetPushDrive(dir, Mathf.Abs(_vx));   // 플레이어도 같은 실시간 속도로 구동(함께 가속·잠김)
+                // 안전장치: 밀고 있는데 실제로 안 움직인 채 0.2s 넘으면(끼임·미검출 장애물) 플레이어 구동 해제 → 자유.
+                _stuckTimer = moved ? 0f : _stuckTimer + dt;
+                if (_stuckTimer < 0.2f) _pc.SetPushDrive(dir, Mathf.Abs(_vx));   // 플레이어도 같은 실시간 속도로 구동(함께 가속·잠김)
                 return;
             }
+            _stuckTimer = 0f;
 
             // 밀지 않음 → 놓는 순간 관성 방향으로 목표 칸을 1회 정하고, arrive식 감속으로 부드럽게 안착.
             if (!_snapping)
@@ -107,7 +115,7 @@ namespace TowardTheStars.Objects
             float arriveV = sdir * Mathf.Min(pushSpeed, Mathf.Sqrt(2f * accel * Mathf.Abs(d)));   // 목표에서 0이 되도록 감속
             _vx = Mathf.MoveTowards(_vx, arriveV, accel * dt);
             SetVX(_vx);
-            if (PlayerBeside()) _pc.SetPushDrive(sdir, Mathf.Abs(_vx));   // 스냅 중 플레이어 동행(함께 감속)
+            if (moved && PlayerBeside()) _pc.SetPushDrive(sdir, Mathf.Abs(_vx));   // 스냅 중 플레이어 동행(움직일 때만 = 자유 보장)
         }
 
         void EnsurePlayer()

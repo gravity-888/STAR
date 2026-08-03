@@ -13,7 +13,7 @@ namespace TowardTheStars.Objects
         [SerializeField] bool isFixed;
         // 아트 기본각 보정: 프리팹 아트가 0°가 아닌 방향으로 그려졌을 때 그 차이를 메운다(반사 연산에는 영향 없음).
         [SerializeField] float visualAngleOffset;
-        // 반사면 반길이(칸). 입사광이 이 선분 범위에서 반사한다. 색 막대 길이 1.1칸에 맞춤(거울 이동 시 접점이 이 범위를 따라 움직임).
+        // 반사면 반길이(칸). 입사광이 이 범위 안에서 반사면과 만날 때만 반사, 벗어나면 통과. 색 막대 길이 1.1칸에 맞춤.
         [SerializeField] float surfaceHalfLength = 0.55f;
 
         public float AngleDeg => angleDeg;
@@ -55,26 +55,30 @@ namespace TowardTheStars.Objects
 
         public Vector2 Interact(Beam incoming, List<Beam> outgoing)
         {
-            // 입사광이 반사면(선분)과 만나는 실제 지점에서 반사한다. 거울을 이동하면 접점이 반사면을 따라 움직이며
-            //   반사되는 빛의 위치가 연속적으로(끊김 없이) 달라진다. 정지 상태에선 접점이 고정 → 빔 안정.
-            //   반사 "방향"은 거울 각도(법선)로 결정되므로 위치와 무관(평면거울). 위치만 접점을 따른다.
+            // 입사광선과 반사면 막대의 교점을 광선 위에서 구한다(클램프 없음 → 입사각 보존, 광원 광선 각도 불변).
+            //   교점이 막대 범위(±surfaceHalfLength) 안이면 반사, 벗어나면(거울 밖) 반사 없이 통과. 방향은 각도(법선)로 결정.
             float th = angleDeg * Mathf.Deg2Rad;
-            Vector2 t = new(Mathf.Sin(th), Mathf.Cos(th));   // 반사면 방향(법선 n=(cosθ,−sinθ)에 수직)
-            Vector2 p = SurfaceHitPoint(incoming.origin, incoming.dir, transform.position, t);
-            outgoing.Add(new Beam(p, Reflect(incoming.dir), incoming.intensity));
-            return p;
-        }
-
-        // 광선(O,D)이 반사면 선분(중심 C, 방향 t, 반길이 surfaceHalfLength)과 만나는 점.
-        //   선분 밖이면 끝으로 클램프(빔은 콜라이더에 맞았으니 가장 가까운 표면점으로), 평행이면 중심.
-        Vector2 SurfaceHitPoint(Vector2 o, Vector2 d, Vector2 c, Vector2 t)
-        {
+            Vector2 tan = new(Mathf.Sin(th), Mathf.Cos(th));   // 반사면 방향(법선 n=(cosθ,−sinθ)에 수직)
+            Vector2 o = incoming.origin, d = incoming.dir, c = transform.position;
             Vector2 rhs = c - o;
-            float det = t.x * d.y - d.x * t.y;
-            if (Mathf.Abs(det) < 1e-6f) return c;                       // 평행 → 중심
-            float u = (d.x * rhs.y - d.y * rhs.x) / det;                // 반사면 축 위 접점 좌표
-            u = Mathf.Clamp(u, -surfaceHalfLength, surfaceHalfLength);
-            return c + t * u;
+            float det = tan.x * d.y - d.x * tan.y;
+            float u;
+            Vector2 p;
+            if (Mathf.Abs(det) < 1e-4f) { u = 0f; p = o + d * Vector2.Dot(rhs, d); }   // 거의 평행 → 수선의 발
+            else { u = (d.x * rhs.y - d.y * rhs.x) / det; p = c + tan * u; }           // 광선-반사면 교점(광선 위)
+
+            if (Mathf.Abs(u) <= surfaceHalfLength)
+            {
+                // 반사면 안에서 맞음 → 반사(단, 방향이 안 바뀌면=평행 스침 종료).
+                Vector2 r = Reflect(d);
+                if (Vector2.Dot(r, d) < 0.999f) outgoing.Add(new Beam(p, r, incoming.intensity));
+            }
+            else
+            {
+                // 반사면(막대)을 벗어남 = 거울 밖 → 반사 없이 같은 방향으로 통과.
+                outgoing.Add(new Beam(p, d, incoming.intensity));
+            }
+            return p;
         }
 
         // Phase 4: 플레이어가 22.5°씩 회전. 회전 후 BeamTracer 재추적 필요.
