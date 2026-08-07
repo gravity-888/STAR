@@ -37,13 +37,14 @@ namespace TowardTheStars.Player
 
         // 미는 거울 밀기 세션: 거울이 매 물리프레임 SetPushDrive를 호출해 플레이어를 pushSpeed로 구동
         //   (점프·방향전환·등반 금지 → 거울과 한 몸처럼 이동). 짧은 만료로 거울이 멈추면 자동 해제.
-        int _pushDir; float _pushSpeed; float _pushUntil = -1f;
-        public void SetPushDrive(int dir, float speed) { _pushDir = dir; _pushSpeed = speed; _pushUntil = Time.time + 0.08f; }
+        int _pushDir; float _pushSpeed; float _pushMax; float _pushUntil = -1f;
+        public void SetPushDrive(int dir, float speed, float maxSpeed) { _pushDir = dir; _pushSpeed = speed; _pushMax = maxSpeed; _pushUntil = Time.time + 0.08f; }
 
         // 애니메이션 seam: PlayerAnimator가 읽어 프리팹 Animator로 전달(아트 없으면 무시). 코드는 아트에 의존하지 않는다.
         public bool Grounded { get; private set; }         // 접지 여부
         public bool Climbing => _climbing;                  // 사다리 등반 중
         public bool IsPushing { get; private set; }         // 미는 거울 밀기 세션 중
+        public float PushDrive { get; private set; }        // 밀기 속도 비율 0~1 (0=정지/전환, 1=정속) — 가속·감속 구간 구분용
         public int Facing { get; private set; } = 1;        // 바라보는 방향(-1 왼쪽 / +1 오른쪽)
         public Vector2 Velocity => _rb != null ? _rb.linearVelocity : Vector2.zero;
 
@@ -131,6 +132,7 @@ namespace TowardTheStars.Player
             bool pushDriven = Time.time <= _pushUntil;
             if (pushDriven) { _climbing = false; _jumpQueued = false; }
             IsPushing = pushDriven;
+            PushDrive = pushDriven && _pushMax > 0.001f ? Mathf.Clamp01(_pushSpeed / _pushMax) : 0f;   // 가속(0→1)·감속(1→0) 구간
 
             bool onLadder = _ladderCount > 0;
             if (!onLadder) _climbing = false;

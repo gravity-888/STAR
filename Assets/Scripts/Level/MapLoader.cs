@@ -87,6 +87,7 @@ namespace TowardTheStars.Level
         static readonly Color C_PlatformSolid = new(0.10f, 0.22f, 0.45f, 1.00f);   // 빛 차단 발판(불투명·진한 남색)
         static readonly Color C_Lens     = new(1.00f, 0.90f, 0.30f);
         static readonly Color C_Gate     = new(0.30f, 0.90f, 0.45f);
+        static readonly Color C_Door     = new(0.78f, 0.35f, 0.30f);   // 문 플레이스홀더 기본색(상태별 변경 없음)
         static readonly Color C_Mirror   = new(0.55f, 0.90f, 1.00f);
         static readonly Color C_MirrorFix = new(0.60f, 0.60f, 0.65f);
         static readonly Color C_MirrorPush = new(0.55f, 0.85f, 0.70f);   // 미는 거울(민트) — 회전(하늘)·고정(회색)과 구분
@@ -136,6 +137,9 @@ namespace TowardTheStars.Level
         public GameObject decoyPrefab;
         public GameObject spawnPrefab;
         public GameObject playerPrefab;
+        // 플레이어 아트(프리팹) 세로 오프셋. 루트=콜라이더 중심이라 바닥 피벗 아트는 −0.45(콜라이더 반높이)만큼 내려야 발이 바닥에 닿음.
+        //   아트 피벗/발 위치에 따라 인스펙터에서 조정(중앙 피벗이면 0 근처).
+        public float playerArtOffsetY = -0.45f;
 
         [Header("스테이지 배경 (스테이지 수만큼 채움 — 인덱스 = stageOrder 순번, 맵의 background로 개별 지정 가능)")]
         public GameObject[] stageBackgrounds;
@@ -662,7 +666,7 @@ namespace TowardTheStars.Level
             Visual(go.transform, gatePrefab, C_Gate, Z_OBJECT, Vector2.one, fitToScale: true);
             var det = go.AddComponent<GateDetector>();
 
-            // 임시 충전 게이지(수광부 위) — 빛을 받는 동안 채워지고 가득 차면 개방. 나중에 수광부 아트 내부 채움 효과로 교체 예정.
+            // 충전 게이지 — 빛을 받는 동안 수광부 아트 뒤에서 아래→위로 차오르고 가득 차면 개방(아트의 투명 영역으로 보임).
             det.SetGauge(BuildGateGauge(go.transform));
 
             // 시작 개방 여부: 저장된 진행상태가 있으면 그것, 없으면 역주행(복귀)이면 열림.
@@ -675,23 +679,21 @@ namespace TowardTheStars.Level
             BuildGateExit(s, det);
         }
 
-        // 임시 충전 게이지: 수광부 위에 배경 바 + 채움 바. 채움은 왼쪽 정렬로 자라난다(x 스케일 = 충전 비율).
-        //   반환 = 채움 피벗(GateDetector가 x 스케일을 갱신). 나중에 수광부 아트 내부 채움 효과로 교체 예정.
+        // 충전 게이지: 수광부 중앙, 아트 뒤(Z_OBJECT−1)에 채움 사각형을 두고 아래→위로 차오른다(y 스케일 = 충전 비율).
+        //   수광부 아트의 투명 영역을 통해 뒤 채움이 보이는 방식. 반환 = 채움 피벗(GateDetector가 y 스케일 갱신).
         Transform BuildGateGauge(Transform parent)
         {
-            const float W = 1.0f, H = 0.16f, Y = 0.75f;   // 폭·높이·수광부 위 오프셋
+            const float W = 0.8f, H = 0.8f;   // 수광부 칸 안을 채우는 크기
             var root = new GameObject("gauge");
             root.transform.SetParent(parent, false);
-            root.transform.localPosition = new Vector3(0f, Y, 0f);
+            root.transform.localPosition = Vector3.zero;   // 수광부 중앙
 
-            MakeSprite(root.transform, "bg", new Color(0.08f, 0.09f, 0.12f, 0.9f), Z_SPAWN, new Vector2(W, H), Vector3.zero);
-
-            // 채움 피벗을 왼쪽 끝(-W/2)에 두고 자식 채움을 +W/2로 → 피벗 x스케일을 키우면 왼쪽 고정으로 자라남.
+            // 채움 피벗을 아래 끝(−H/2)에 두고 자식 채움을 +H/2로 → 피벗 y스케일을 키우면 아래 고정으로 차오름.
             var pivot = new GameObject("fillPivot");
             pivot.transform.SetParent(root.transform, false);
-            pivot.transform.localPosition = new Vector3(-W * 0.5f, 0f, 0f);
-            MakeSprite(pivot.transform, "fill", new Color(0.45f, 1f, 0.7f), Z_SPAWN + 1, new Vector2(W, H), new Vector3(W * 0.5f, 0f, 0f));
-            pivot.transform.localScale = new Vector3(0f, 1f, 1f);   // 시작 0(빈 게이지)
+            pivot.transform.localPosition = new Vector3(0f, -H * 0.5f, 0f);
+            MakeSprite(pivot.transform, "fill", new Color(0.45f, 1f, 0.7f), Z_OBJECT - 1, new Vector2(W, H), new Vector3(0f, H * 0.5f, 0f));
+            pivot.transform.localScale = new Vector3(1f, 0f, 1f);   // 시작 0(빈 게이지)
             return pivot.transform;
         }
 
@@ -792,7 +794,7 @@ namespace TowardTheStars.Level
             // 프리팹은 "긴 하나의 아트"를 존(w×h)에 정확히 맞춤(가로형은 90° 회전). 비면 색 사각형(존 크기, 살짝 인셋).
             SpriteRenderer sr = gateDoorPrefab != null
                 ? InstantiateGateDoor(block.transform, gateDoorPrefab, Z_OBJECT, w, h)
-                : Visual(block.transform, door.closedColor, Z_OBJECT, new Vector2(w - 0.1f, h - 0.1f));
+                : Visual(block.transform, C_Door, Z_OBJECT, new Vector2(w - 0.1f, h - 0.1f));
             // 열림 방향(맵 gate.open_dir, 기본 위 ↑). 세로로 열리면 존 높이(h), 가로로 열리면 폭(w)만큼 이동해 통로를 완전히 비운다.
             Vector2 openDir = GridMap.DirToVector(s.Gate?.OpenDir);
             if (openDir == Vector2.zero) openDir = Vector2.up;
@@ -830,7 +832,7 @@ namespace TowardTheStars.Level
             go.transform.position = new Vector3(pos.x, pos.y, 0f);
 
             var body = go.AddComponent<BoxCollider2D>();
-            body.size = new Vector2(0.6f, 0.9f);          // 몸통(트리거 아님) — 지형/발판과 충돌
+            body.size = new Vector2(1.0f, 0.9f);          // 몸통(트리거 아님) — 지형/발판과 충돌. 약 1칸 너비 × 0.9칸 높이
             body.edgeRadius = 0.03f;                       // 모서리 라운딩 → 타일 콜라이더 이음새에 안 걸림
             // 벽 끼임 방지: 마찰 0. 정지 시 x속도는 PlayerController가 0으로 세팅하므로 미끄러짐 없음.
             body.sharedMaterial = new PhysicsMaterial2D("PlayerSlip") { friction = 0f, bounciness = 0f };
@@ -844,7 +846,12 @@ namespace TowardTheStars.Level
             go.AddComponent<MirrorInteractor>();   // Phase 4: Q/E로 가까운 거울 회전 + 빛 재추적
             go.AddComponent<LensInteractor>().carryVisualPrefab = lensPrefab;   // F: 랜즈 줍기/장착/해제
 
-            Visual(go.transform, playerPrefab, C_Player, Z_SPAWN + 1, new Vector2(0.6f, 0.9f));
+            Visual(go.transform, playerPrefab, C_Player, Z_SPAWN + 1, new Vector2(1.0f, 0.9f));
+            if (playerPrefab != null)   // 프리팹 아트: 발이 콜라이더 바닥에 오도록 세로 오프셋(색 사각형 폴백은 중앙 유지)
+            {
+                var pv = go.transform.Find("visual");
+                if (pv != null) { var lp = pv.localPosition; lp.y = playerArtOffsetY; pv.localPosition = lp; }
+            }
             go.AddComponent<Player.PlayerAnimator>();   // 애니 seam: 프리팹 Animator 구동 + 방향 뒤집기(visual 생성 후 부착)
             return go.transform;
         }

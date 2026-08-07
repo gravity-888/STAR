@@ -27,7 +27,7 @@ namespace TowardTheStars.Objects
         public event Action OnOpen;                 // 열리는 엣지에서 1회(스테이지 진행 등)
         public event Action<bool> OnStateChanged;   // 개폐 상태가 바뀔 때마다(문 여닫이용)
 
-        Transform _gaugeFill;   // 게이지 채움 피벗(x 스케일 = 충전 비율, 왼쪽 정렬로 자라남)
+        Transform _gaugeFill;   // 게이지 채움 피벗(y 스케일 = 충전 비율, 아래에서 차오름)
 
         public void SetGauge(Transform fillPivot) { _gaugeFill = fillPivot; UpdateGauge(); }
 
@@ -95,7 +95,7 @@ namespace TowardTheStars.Objects
         {
             if (_gaugeFill == null) return;
             var s = _gaugeFill.localScale;
-            _gaugeFill.localScale = new Vector3(ChargeFraction, s.y, s.z);
+            _gaugeFill.localScale = new Vector3(s.x, ChargeFraction, s.z);   // y = 충전 비율(아래에서 위로 차오름)
         }
     }
 }

@@ -10,6 +10,7 @@ namespace TowardTheStars.Player
     //       Grounded(Bool)  접지 여부
     //       Climbing(Bool)  사다리 등반 중
     //       Pushing(Bool)   미는 거울 밀기 중
+    //       PushDrive(Float) 밀기 속도 비율 0~1 — 가속(0→1)·감속(1→0) 전환 구간 구분(정속≈1)
     //   · 아트는 오른쪽을 바라보는 기준으로 그릴 것(Facing<0이면 코드가 x를 뒤집음).
     [RequireComponent(typeof(PlayerController))]
     public class PlayerAnimator : MonoBehaviour
@@ -23,6 +24,7 @@ namespace TowardTheStars.Player
         static readonly int PGrounded = Animator.StringToHash("Grounded");
         static readonly int PClimbing = Animator.StringToHash("Climbing");
         static readonly int PPushing  = Animator.StringToHash("Pushing");
+        static readonly int PPushDrive = Animator.StringToHash("PushDrive");
 
         void Awake()
         {
@@ -51,6 +53,7 @@ namespace TowardTheStars.Player
             _anim.SetBool(PGrounded, _pc.Grounded);
             _anim.SetBool(PClimbing, _pc.Climbing);
             _anim.SetBool(PPushing, _pc.IsPushing);
+            _anim.SetFloat(PPushDrive, _pc.PushDrive);
         }
     }
 }

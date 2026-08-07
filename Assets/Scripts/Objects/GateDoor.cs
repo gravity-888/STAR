@@ -13,10 +13,6 @@ namespace TowardTheStars.Objects
     // 정렬순서: 열리면 문 시각을 뒤로 보내(offset) 미끄러져 들어가는 쪽 아트에 가려지게 한다. 닫히면 원복.
     public class GateDoor : MonoBehaviour
     {
-        [Header("색(닫힘=막힌 장벽 / 열림=반투명 통로)")]
-        public Color closedColor = new(0.78f, 0.35f, 0.30f);
-        public Color openColor   = new(0.40f, 1.00f, 0.50f, 0.12f);
-
         [Header("여닫이 연출")]
         public float slideDuration = 0.8f;   // 완전히 열리거나 닫히는 데 걸리는 시간(초)
 
@@ -24,7 +20,6 @@ namespace TowardTheStars.Objects
         public int openSortingOffset = -20;  // 열렸을 때 문 시각에 더할 정렬순서(음수 = 다른 아트 뒤로 가려짐)
 
         Collider2D _blocker;
-        SpriteRenderer _visual;
         Transform _door;
         Vector3 _closedPos;
         Vector3 _slideVec;   // 열릴 때 이동하는 벡터(방향×거리). 닫힘=원위치.
@@ -39,7 +34,6 @@ namespace TowardTheStars.Objects
         public void Register(Collider2D col, SpriteRenderer sr, Vector3 slideOffset)
         {
             _blocker = col;
-            _visual = sr;
             _door = col != null ? col.transform : (sr != null ? sr.transform : null);
             if (_door != null)
             {
@@ -66,7 +60,6 @@ namespace TowardTheStars.Objects
         {
             IsOpen = open;
             if (_blocker != null) _blocker.enabled = !open;
-            if (_visual != null) _visual.color = open ? openColor : closedColor;
             if (_door != null) _door.position = _closedPos + (open ? _slideVec : Vector3.zero);
             ApplySorting(open);
         }
@@ -89,22 +82,17 @@ namespace TowardTheStars.Objects
         {
             Vector3 from = _door.position;
             Vector3 to   = _closedPos + (open ? _slideVec : Vector3.zero);
-            Color fromC  = _visual != null ? _visual.color : default;
-            Color toC    = open ? openColor : closedColor;
 
             // 중간에 방향이 뒤집혀도 속도가 일정하도록 남은 거리에 비례한 시간을 쓴다.
             float mag = _slideVec.magnitude;
             float dur = mag > 0.0001f ? slideDuration * ((to - from).magnitude / mag) : 0f;
             for (float t = 0f; t < dur; t += Time.deltaTime)
             {
-                float k = t / dur;
-                _door.position = Vector3.Lerp(from, to, k);
-                if (_visual != null) _visual.color = Color.Lerp(fromC, toC, k);
+                _door.position = Vector3.Lerp(from, to, t / dur);
                 yield return null;
             }
 
             _door.position = to;
-            if (_visual != null) _visual.color = toC;
             if (!open && _blocker != null) _blocker.enabled = true;   // 닫힘: 다 돌아온 뒤 막는다
             _anim = null;
         }

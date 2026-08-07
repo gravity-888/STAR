@@ -18,7 +18,7 @@ namespace TowardTheStars.Objects
         public float accel = 12f;            // 가속·감속률(칸/초²). 0→최고속 ≈0.2s, 정지까지 감속거리 ≈0.26칸.
         public float reachY = 0.7f;          // 플레이어가 옆에 있다고 볼 세로 오차(위/아래에선 안 밀림)
         public float touchPad = 0.15f;       // 접촉 판정 여유(칸)
-        const float PlayerHalfW = 0.3f;      // 플레이어 콜라이더 반폭(0.6/2)
+        const float PlayerHalfW = 0.5f;      // 플레이어 콜라이더 반폭(1.0/2)
         const float SnapEps = 0.02f;         // 이 이내면 칸에 정렬된 것으로 간주(빔은 어차피 칸 스냅이라 무해)
 
         BoxCollider2D _col;
@@ -85,7 +85,7 @@ namespace TowardTheStars.Objects
                 SetVX(_vx);
                 // 안전장치: 밀고 있는데 실제로 안 움직인 채 0.2s 넘으면(끼임·미검출 장애물) 플레이어 구동 해제 → 자유.
                 _stuckTimer = moved ? 0f : _stuckTimer + dt;
-                if (_stuckTimer < 0.2f) _pc.SetPushDrive(dir, Mathf.Abs(_vx));   // 플레이어도 같은 실시간 속도로 구동(함께 가속·잠김)
+                if (_stuckTimer < 0.2f) _pc.SetPushDrive(dir, Mathf.Abs(_vx), pushSpeed);   // 플레이어도 같은 실시간 속도로 구동(함께 가속·잠김)
                 return;
             }
             _stuckTimer = 0f;
@@ -115,7 +115,7 @@ namespace TowardTheStars.Objects
             float arriveV = sdir * Mathf.Min(pushSpeed, Mathf.Sqrt(2f * accel * Mathf.Abs(d)));   // 목표에서 0이 되도록 감속
             _vx = Mathf.MoveTowards(_vx, arriveV, accel * dt);
             SetVX(_vx);
-            if (moved && PlayerBeside()) _pc.SetPushDrive(sdir, Mathf.Abs(_vx));   // 스냅 중 플레이어 동행(움직일 때만 = 자유 보장)
+            if (moved && PlayerBeside()) _pc.SetPushDrive(sdir, Mathf.Abs(_vx), pushSpeed);   // 스냅 중 플레이어 동행(움직일 때만 = 자유 보장)
         }
 
         void EnsurePlayer()
